@@ -21,5 +21,5 @@ struct Config {
     static Config      load();
     static std::string config_path();
     void save() const;
-    void print() const;
+    void print(const std::string& model_extra = "") const;
 };

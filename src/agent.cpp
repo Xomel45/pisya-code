@@ -1,6 +1,7 @@
 #include "agent.h"
 #include "lang.h"
 #include "tools.h"
+#include <string_view>
 #include <atomic>
 #include <chrono>
 #include <format>
@@ -284,10 +285,10 @@ void Agent::handle_tool_calls(const nlohmann::json& tool_calls) {
     }
 }
 
-// ── random verb ──────────────────────────────────────────────────────────────
+// ── random thinking word ──────────────────────────────────────────────────────
 
 static std::string random_thinking() {
-    static constexpr std::string_view words[] = {
+    static constexpr std::string_view EN[] = {
         "Thinking",     "Puzzling",     "Pondering",    "Scheming",
         "Hallucinating","Dreaming",     "Cooking",      "Brewing",
         "Calculating",  "Meditating",   "Contemplating","Reasoning",
@@ -295,13 +296,43 @@ static std::string random_thinking() {
         "Summoning",    "Wrangling",    "Vibing",       "Crunching",
         "Manifesting",  "Conjuring",    "Mulling",      "Stewing",
     };
+    static constexpr std::string_view RU[] = {
+        "Думаю",        "Соображаю",    "Варю",         "Колдую",
+        "Галлюцинирую", "Мечтаю",       "Готовлю",      "Завариваю",
+        "Считаю",       "Медитирую",    "Размышляю",    "Рассуждаю",
+        "Воображаю",    "Строю планы",  "Гадаю",        "Взвешиваю",
+        "Призываю",     "Борюсь",       "Вибрирую",     "Перемалываю",
+        "Манифестирую", "Торможу",      "Жую",          "Тупею",
+    };
+    static constexpr std::string_view DE[] = {
+        "Denke",        "Grüble",       "Sinne",        "Plane",
+        "Halluziniere", "Träume",       "Koche",        "Braue",
+        "Berechne",     "Meditiere",    "Überlege",     "Schlussfolgere",
+        "Fantasiere",   "Schmede",      "Wundere mich", "Abwäge",
+        "Beschwöre",    "Ringe",        "Vibe",         "Verarbeite",
+        "Manifestiere", "Zaubers",      "Kaue",         "Schmorre",
+    };
     static std::mt19937 rng{std::random_device{}()};
-    static std::uniform_int_distribution<size_t> dist{0, std::size(words) - 1};
-    return std::string(words[dist(rng)]);
+    switch (lang::current()) {
+        case lang::Code::Ru: {
+            static std::uniform_int_distribution<size_t> d{0, std::size(RU) - 1};
+            return std::string(RU[d(rng)]);
+        }
+        case lang::Code::De: {
+            static std::uniform_int_distribution<size_t> d{0, std::size(DE) - 1};
+            return std::string(DE[d(rng)]);
+        }
+        default: {
+            static std::uniform_int_distribution<size_t> d{0, std::size(EN) - 1};
+            return std::string(EN[d(rng)]);
+        }
+    }
 }
 
+// ── random done verb ──────────────────────────────────────────────────────────
+
 static std::string random_verb() {
-    static constexpr std::string_view verbs[] = {
+    static constexpr std::string_view EN[] = {
         "Churned",    "Cooked",      "Sautéed",     "Brewed",
         "Cogitated",  "Pondered",    "Distilled",   "Conjured",
         "Summoned",   "Wrangled",    "Synthesized", "Computed",
@@ -311,9 +342,41 @@ static std::string random_verb() {
         "Extrapolated","Hallucinated","Schemed",     "Devised",
         "Mulled",     "Stewed",      "Roasted",     "Smoked",
     };
+    static constexpr std::string_view RU[] = {
+        "Сварил",       "Приготовил",  "Обжарил",     "Заварил",
+        "Поразмыслил",  "Взвесил",     "Перегнал",    "Призвал",
+        "Вызвал",       "Выкрутился",  "Синтезировал","Посчитал",
+        "Испёк",        "Замариновал", "Перебродил",  "Обработал",
+        "Созерцал",     "Взвесил",     "Вычислил",    "Выковал",
+        "Смоделировал", "Помедитировал","Осмыслил",   "Вывел",
+        "Экстраполировал","Нагалюцинировал","Схитрил","Придумал",
+        "Пожевал",      "Потомил",     "Прожарил",    "Накурился",
+    };
+    static constexpr std::string_view DE[] = {
+        "Gebrutzelt",   "Gekocht",     "Sautiert",    "Gebraut",
+        "Gegrübelt",    "Abgewogen",   "Destilliert", "Beschworen",
+        "Herbeigerufen","Gerungen",    "Synthetisiert","Berechnet",
+        "Gebacken",     "Mariniert",   "Vergoren",    "Verarbeitet",
+        "Kontempliert", "Deliberiert", "Kalkuliert",  "Geschmiedet",
+        "Simuliert",    "Meditiert",   "Geschlussfolgert","Deduziert",
+        "Extrapoliert", "Halluziniert","Geschachert", "Erdacht",
+        "Durchgekaut",  "Geschmort",   "Geröstet",    "Verraucht",
+    };
     static std::mt19937 rng{std::random_device{}()};
-    static std::uniform_int_distribution<size_t> dist{0, std::size(verbs) - 1};
-    return std::string(verbs[dist(rng)]);
+    switch (lang::current()) {
+        case lang::Code::Ru: {
+            static std::uniform_int_distribution<size_t> d{0, std::size(RU) - 1};
+            return std::string(RU[d(rng)]);
+        }
+        case lang::Code::De: {
+            static std::uniform_int_distribution<size_t> d{0, std::size(DE) - 1};
+            return std::string(DE[d(rng)]);
+        }
+        default: {
+            static std::uniform_int_distribution<size_t> d{0, std::size(EN) - 1};
+            return std::string(EN[d(rng)]);
+        }
+    }
 }
 
 // ── spinner ───────────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 #include "agent.h"
+#include "ai_client.h"
 #include "config.h"
 #include "lang.h"
 #include "session.h"
@@ -28,7 +29,8 @@ static std::string get_username() {
     return "friend";
 }
 
-static void print_banner(const Config& cfg, const std::string& username) {
+static void print_banner(const Config& cfg, const std::string& username,
+                          const std::string& model_extra) {
     std::cout << "\n"
               << clr::orange << clr::bold
               << R"(  ____  _                    ____          _      )" << "\n"
@@ -42,7 +44,7 @@ static void print_banner(const Config& cfg, const std::string& username) {
               << "  " << clr::white << clr::bold << "Hey, " << username << "!" << clr::reset
               << "\n\n";
     std::cout << clr::dim;
-    cfg.print();
+    cfg.print(model_extra);
     std::cout << clr::reset
               << "\n"
               << clr::dim
@@ -168,7 +170,17 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    print_banner(cfg, username);
+    // Fetch model info from server (best-effort — silent on failure)
+    std::string model_extra;
+    {
+        AIClient tmp(cfg.host, cfg.port, cfg.model);
+        if (auto info = tmp.fetch_model_info()) {
+            if (!info->param_size.empty())   model_extra  = info->param_size;
+            if (!info->quantization.empty()) model_extra += "  " + info->quantization;
+        }
+    }
+
+    print_banner(cfg, username, model_extra);
 
     // ── load or create session ────────────────────────────────────────────────
     Session session;

@@ -9,7 +9,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Threads REQUIRED)
-find_library(READLINE_LIB readline REQUIRED)
 
 add_executable(pisya
     src/main.cpp
@@ -29,7 +28,6 @@ target_include_directories(pisya PRIVATE
 
 target_link_libraries(pisya PRIVATE
     Threads::Threads
-    ${READLINE_LIB}
 )
 
 target_compile_options(pisya PRIVATE

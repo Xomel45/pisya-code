@@ -1,4 +1,5 @@
 #pragma once
+#include <optional>
 #include <string>
 #include <vector>
 #include "../third_party/json.hpp"
@@ -12,7 +13,15 @@ struct Message {
 
 class AIClient {
 public:
+    struct ModelInfo {
+        std::string param_size;   // e.g. "14.8B"
+        std::string quantization; // e.g. "Q4_K_M"
+    };
+
     AIClient(const std::string& host, int port, const std::string& model);
+
+    // Query /api/show for model details (Ollama). Returns nullopt on failure.
+    std::optional<ModelInfo> fetch_model_info() const;
 
     // Returns full response JSON from the model
     nlohmann::json chat(const std::vector<Message>& messages,

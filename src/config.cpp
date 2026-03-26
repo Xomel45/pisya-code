@@ -59,7 +59,10 @@ void Config::save() const {
         << "lang  = " << lang  << "\n";
 }
 
-void Config::print() const {
+void Config::print(const std::string& model_extra) const {
     std::cout << std::format("  host  : {}:{}\n", host, port);
-    std::cout << std::format("  model : {}\n", model);
+    if (model_extra.empty())
+        std::cout << std::format("  model : {}\n", model);
+    else
+        std::cout << std::format("  model : {}  ·  {}\n", model, model_extra);
 }
