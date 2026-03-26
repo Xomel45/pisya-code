@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "lang.h"
 #include <algorithm>
 #include <iostream>
 #include <sys/ioctl.h>
@@ -144,10 +145,11 @@ void draw_menu(const std::vector<std::string>& opts, int sel) {
 std::string ui::select(const std::string& prompt,
                         const std::vector<std::string>& options) {
     std::vector<std::string> opts = options;
-    bool has_custom = std::ranges::any_of(opts, [](const std::string& o) {
-        return o == "Свой ответ...";
+    const char* custom_label = lang::S().custom_answer;
+    bool has_custom = std::ranges::any_of(opts, [&](const std::string& o) {
+        return o == custom_label;
     });
-    if (!has_custom) opts.push_back("Свой ответ...");
+    if (!has_custom) opts.push_back(custom_label);
 
     int n   = static_cast<int>(opts.size());
     int sel = 0;
@@ -183,7 +185,7 @@ std::string ui::select(const std::string& prompt,
         } else if (k == '\033' || k == 'q') {
             set_raw(false);
             std::cout << "\033[" << n << "A\033[J"
-                      << "  " << DIM << "(отменено)" << RST << "\n\n";
+                      << "  " << DIM << lang::S().cancelled << RST << "\n\n";
             return "";
         }
 
@@ -229,24 +231,23 @@ std::string ui::danger_category(const std::string& cmd) {
 // ── ui::ask_permission ────────────────────────────────────────────────────────
 
 ui::Perm ui::ask_permission(const std::string& cmd, const std::string& category) {
+    const auto& L = lang::S();
     std::cout << "\n  " << YEL << BOLD << "⚠ " << RST
-              << YEL << "Опасная операция" << RST;
+              << YEL << L.danger_title << RST;
     if (!category.empty())
         std::cout << DIM << " — " << category << RST;
     std::cout << "\n"
               << DIM << "  $ " << RST << cmd << "\n";
 
     std::vector<std::string> opts = {
-        "Разрешить",
-        "Разрешить для всей сессии (" + category + ")",
-        "Отмена"
+        L.perm_allow,
+        std::string(L.perm_allow_session) + " (" + category + ")",
+        L.perm_deny
     };
 
-    // Reuse select() but map result back to enum
-    std::string choice = ui::select("Что делаем?", opts);
-    // Remove the custom answer that select() always appends
-    if (choice == "Разрешить")                              return Perm::Allow;
-    if (choice.starts_with("Разрешить для всей сессии"))   return Perm::AllowSession;
+    std::string choice = ui::select(L.perm_prompt, opts);
+    if (choice == L.perm_allow)                               return Perm::Allow;
+    if (choice.starts_with(L.perm_allow_session))             return Perm::AllowSession;
     return Perm::Deny;
 }
 
@@ -268,15 +269,12 @@ int content_lines(const std::string& text, int W) {
 }
 
 // Draw the widget.
-// Saves cursor position at widget start (\033[s) so clear_widget can restore it.
-// Returns 0 (unused by caller, kept for API compat).
+// Returns how many lines below the widget top the cursor now sits,
+// so clear_widget can navigate back up exactly that many lines.
 int draw_widget(const std::string& text, int cursor_cp, int W) {
     int avail    = W - 3;
     int nlines   = content_lines(text, W);
     int total_cp = utf8_len(text);
-
-    // Save cursor position — clear_widget will restore here and clear down
-    std::cout << "\033[s";
 
     // Top border
     std::cout << hline(W) << "\n";
@@ -302,32 +300,28 @@ int draw_widget(const std::string& text, int cursor_cp, int W) {
     // Bottom border
     std::cout << hline(W) << "\n";
 
-    // Hint bar (with \n so cursor lands on known line after widget)
-    std::cout << "  " << DIM
-              << "⏵⏵ отправить на enter"
-              << "   shift+enter — новая строка"
-              << "   ctrl+c — отмена"
-              << RST << "\n";
+    // Hint bar
+    std::cout << "  " << DIM << lang::S().hint_bar << RST << "\n";
 
-    // Position terminal cursor at the text cursor location inside the widget
-    // Layout: line 0 = top border, lines 1..nlines = content, nlines+1 = bottom, nlines+2 = hint
-    // After hint \n cursor is at line nlines+3 (below widget).
+    // After hint \n cursor is nlines+3 lines below widget top.
+    // Move back up to the correct content line and column.
     int cursor_line = (avail > 0) ? (cursor_cp / avail) : 0;
     int cursor_col  = 3 + (avail > 0 ? cursor_cp % avail : 0);
-    // Lines to go up from below-widget to the correct content line:
-    //   (nlines+3) - (1 + cursor_line) = nlines + 2 - cursor_line
     int up = nlines + 2 - cursor_line;
     if (up > 0) std::cout << "\033[" << up << "A";
     std::cout << "\r";
     if (cursor_col > 0) std::cout << "\033[" << cursor_col << "C";
     std::cout.flush();
 
-    return 0;
+    // Cursor is now 1 + cursor_line lines below widget top
+    return 1 + cursor_line;
 }
 
-void clear_widget(int /*unused*/) {
-    // Restore to the position saved by draw_widget, clear everything below
-    std::cout << "\033[u\033[J";
+void clear_widget(int lines_below_top) {
+    // Go up to widget top, then wipe everything below
+    if (lines_below_top > 0)
+        std::cout << "\033[" << lines_below_top << "A";
+    std::cout << "\r\033[J";
     std::cout.flush();
 }
 
@@ -361,7 +355,7 @@ std::string ui::read_input() {
         } else if (k == 3 || k == 4) { // Ctrl+C / Ctrl+D
             set_raw(false);
             clear_widget(prev_cursor);
-            std::cout << DIM << "  (отменено)" << RST << "\n\n";
+            std::cout << DIM << "  " << lang::S().cancelled << RST << "\n\n";
             return "";
 
         } else if (k == 127 || k == 8) { // Backspace

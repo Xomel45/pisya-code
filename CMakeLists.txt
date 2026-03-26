@@ -19,6 +19,7 @@ add_executable(pisya
     src/agent.cpp
     src/ui.cpp
     src/session.cpp
+    src/lang.cpp
 )
 
 target_include_directories(pisya PRIVATE

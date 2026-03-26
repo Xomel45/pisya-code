@@ -45,9 +45,18 @@ Config Config::load() {
         if      (key == "host")          cfg.host   = val;
         else if (key == "port")          cfg.port   = std::stoi(val);
         else if (key == "model")         cfg.model  = val;
+        else if (key == "lang")          cfg.lang   = val;
         else if (key == "system_prompt") cfg.system_prompt = val;
     }
     return cfg;
+}
+
+void Config::save() const {
+    std::ofstream out(config_path());
+    out << "host  = " << host  << "\n"
+        << "port  = " << port  << "\n"
+        << "model = " << model << "\n"
+        << "lang  = " << lang  << "\n";
 }
 
 void Config::print() const {

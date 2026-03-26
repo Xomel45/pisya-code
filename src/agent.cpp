@@ -1,4 +1,5 @@
 #include "agent.h"
+#include "lang.h"
 #include "tools.h"
 #include <atomic>
 #include <chrono>
@@ -261,7 +262,7 @@ Agent::Agent(const Config& cfg, std::vector<Message> history)
 void Agent::clear_history() {
     history_.clear();
     history_.push_back({"system", config_.system_prompt, {}, {}});
-    std::cout << clr::dim << "  [history cleared]\n" << clr::reset;
+    std::cout << clr::dim << "  " << lang::S().history_cleared << "\n" << clr::reset;
 }
 
 void Agent::handle_tool_calls(const nlohmann::json& tool_calls) {
@@ -323,22 +324,22 @@ static void run_spinner(std::atomic<bool>& done,
                         std::stop_token st) {
     constexpr std::string_view frames[] = {"⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"};
 
-    // Save cursor position — every frame restores here and overwrites
-    std::cout << "\033[s" << std::flush;
+    // Print initial spinner line; every frame overwrites it with \r
+    std::cout << std::flush;
 
     int i = 0;
     while (!done.load() && !st.stop_requested()) {
         auto elapsed = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - start).count();
-        std::cout << "\033[u\033[K  " << clr::dim
+        std::cout << "\r\033[K  " << clr::dim
                   << frames[i % 10] << " " << word << "… "
                   << std::format("{:.1f}s", elapsed) << clr::reset
                   << std::flush;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         ++i;
     }
-    // Erase spinner line, leave cursor at start of clean line
-    std::cout << "\033[u\033[K" << std::flush;
+    // Erase spinner line
+    std::cout << "\r\033[K" << std::flush;
 }
 
 // ── run ───────────────────────────────────────────────────────────────────────

@@ -57,6 +57,8 @@ std::string tools::edit_file(const std::string& path,
     auto pos = content.find(old_str);
     if (pos == std::string::npos)
         return "Error: old_string not found in file (must be unique and exact)";
+    if (content.find(old_str, pos + 1) != std::string::npos)
+        return "Error: old_string appears more than once — make it more specific";
 
     content.replace(pos, old_str.size(), new_str);
 

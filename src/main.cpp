@@ -1,5 +1,6 @@
 #include "agent.h"
 #include "config.h"
+#include "lang.h"
 #include "session.h"
 #include "ui.h"
 #include "../third_party/json.hpp"
@@ -45,7 +46,7 @@ static void print_banner(const Config& cfg, const std::string& username) {
     std::cout << clr::reset
               << "\n"
               << clr::dim
-              << "  Commands: /clear — clear history | /config — show config | /exit — quit\n"
+              << "  " << lang::S().cmd_hint << "\n"
               << clr::reset << "\n";
 }
 
@@ -71,7 +72,7 @@ static bool feedback_due() {
     std::string path = feedback_path();
     int64_t ts       = now_ts();
 
-    json state;
+    json state = json::object();
     if (std::filesystem::exists(path)) {
         std::ifstream f(path);
         try { state = json::parse(f); } catch (...) {}
@@ -103,17 +104,18 @@ static bool feedback_due() {
 }
 
 static void show_feedback(const std::string& model) {
+    const auto& L = lang::S();
     std::cout << clr::white << clr::bold << "● " << clr::reset
-              << std::format("How is {} doing this session? ", model)
-              << clr::dim << "(optional)" << clr::reset << "\n";
+              << L.feedback_prefix << model << L.feedback_suffix << " "
+              << clr::dim << L.feedback_optional << clr::reset << "\n";
 
-    std::string choice = ui::select("", {"Bad", "Fine", "Good", "Very Good", "Dismiss"});
+    std::string choice = ui::select("", {L.fb_bad, L.fb_fine, L.fb_good, L.fb_vg, L.fb_dismiss});
 
-    if (choice == "Dismiss" || choice.empty()) return;
-    if      (choice == "Bad")       std::cout << clr::dim   << "  Got it. Hope things improve.\n" << clr::reset;
-    else if (choice == "Fine")      std::cout << clr::dim   << "  Noted. Let's get to work.\n"    << clr::reset;
-    else if (choice == "Good")      std::cout << clr::green << "  Glad to hear it!\n"             << clr::reset;
-    else if (choice == "Very Good") std::cout << clr::green << "  Let's keep it that way!\n"      << clr::reset;
+    if (choice == L.fb_dismiss || choice.empty()) return;
+    if      (choice == L.fb_bad)  std::cout << clr::dim   << "  " << L.fb_bad_msg  << "\n" << clr::reset;
+    else if (choice == L.fb_fine) std::cout << clr::dim   << "  " << L.fb_fine_msg << "\n" << clr::reset;
+    else if (choice == L.fb_good) std::cout << clr::green << "  " << L.fb_good_msg << "\n" << clr::reset;
+    else if (choice == L.fb_vg)   std::cout << clr::green << "  " << L.fb_vg_msg   << "\n" << clr::reset;
     std::cout << "\n";
 }
 
@@ -121,7 +123,7 @@ static void show_feedback(const std::string& model) {
 static std::string pick_session() {
     auto sessions = Session::list_all();
     if (sessions.empty()) {
-        std::cout << clr::dim << "  No saved sessions found. Starting a new one.\n\n" << clr::reset;
+        std::cout << clr::dim << "  " << lang::S().no_sessions << "\n\n" << clr::reset;
         return "";
     }
 
@@ -136,7 +138,7 @@ static std::string pick_session() {
     }
 
     std::cout << clr::white << clr::bold << "● " << clr::reset
-              << "Resume which session?\n";
+              << lang::S().resume_which << "\n";
     std::string choice = ui::select("", options);
 
     if (choice.empty()) return ""; // cancelled
@@ -153,6 +155,7 @@ static std::string pick_session() {
 
 int main(int argc, char* argv[]) {
     Config cfg      = Config::load();
+    lang::set(cfg.lang);
     std::string username = get_username();
 
     // ── parse --resume ────────────────────────────────────────────────────────
@@ -182,13 +185,14 @@ int main(int argc, char* argv[]) {
                 int user_msgs = 0;
                 for (const auto& m : session.messages)
                     if (m.role == "user") ++user_msgs;
-                std::cout << clr::green << "  ● Resumed: " << clr::reset
+                std::cout << clr::green << "  ● " << lang::S().resumed << ": " << clr::reset
                           << session.id << clr::dim
                           << std::format("  ({} messages)\n\n", user_msgs)
                           << clr::reset;
             } catch (const std::exception& e) {
-                std::cout << clr::dim << "  Could not load session: "
-                          << e.what() << " — starting fresh.\n\n" << clr::reset;
+                const auto& L = lang::S();
+                std::cout << clr::dim << "  " << L.session_load_fail
+                          << e.what() << L.starting_fresh << "\n\n" << clr::reset;
             }
         }
     }
@@ -210,7 +214,7 @@ int main(int argc, char* argv[]) {
         if (input.empty()) continue;
 
         if (input == "/exit" || input == "/quit") {
-            std::cout << "Bye, " << username << "!\n";
+            std::cout << lang::S().bye << ", " << username << "!\n";
             break;
         }
         if (input == "/clear") {
@@ -223,7 +227,21 @@ int main(int argc, char* argv[]) {
             continue;
         }
         if (input == "/session") {
-            std::cout << clr::dim << "  Session: " << session.id << clr::reset << "\n\n";
+            std::cout << clr::dim << "  " << lang::S().session_label
+                      << session.id << clr::reset << "\n\n";
+            continue;
+        }
+        if (input == "/language") {
+            std::string choice = ui::select(lang::S().lang_prompt,
+                                            {"English", "Русский", "Deutsch"});
+            if      (choice == "English") cfg.lang = "en";
+            else if (choice == "Русский") cfg.lang = "ru";
+            else if (choice == "Deutsch") cfg.lang = "de";
+            else continue;
+            lang::set(cfg.lang);
+            cfg.save();
+            std::cout << clr::dim << "  " << lang::S().lang_saved
+                      << clr::reset << "\n\n";
             continue;
         }
 
