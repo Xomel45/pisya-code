@@ -34,6 +34,9 @@ static constexpr Strings EN = {
     .fb_vg_msg          = "Let's keep it that way!",
     .lang_prompt        = "Choose language",
     .lang_saved         = "Language saved.",
+    .overwrite_prompt        = "File already exists — overwrite?",
+    .run_cmd                 = "Execute",
+    .outside_project_prompt  = "Path is outside the project directory — allow this once?",
 };
 
 static constexpr Strings RU = {
@@ -68,6 +71,9 @@ static constexpr Strings RU = {
     .fb_vg_msg          = "\u0422\u0430\u043a \u0438 \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u043c!",
     .lang_prompt        = "\u0412\u044b\u0431\u0435\u0440\u0438 \u044f\u0437\u044b\u043a",
     .lang_saved         = "\u042f\u0437\u044b\u043a \u0441\u043e\u0445\u0440\u0430\u043d\u0451\u043d.",
+    .overwrite_prompt        = "\u0424\u0430\u0439\u043b \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442 \u2014 \u043f\u0435\u0440\u0435\u0437\u0430\u043f\u0438\u0441\u0430\u0442\u044c?",
+    .run_cmd                 = "\u0412\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c",
+    .outside_project_prompt  = "\u041f\u0443\u0442\u044c \u0437\u0430 \u043f\u0440\u0435\u0434\u0435\u043b\u0430\u043c\u0438 \u043f\u0440\u043e\u0435\u043a\u0442\u0430 \u2014 \u0440\u0430\u0437\u0440\u0435\u0448\u0438\u0442\u044c \u043e\u0434\u0438\u043d \u0440\u0430\u0437?",
 };
 
 static constexpr Strings DE = {
@@ -102,6 +108,9 @@ static constexpr Strings DE = {
     .fb_vg_msg          = "So soll es bleiben!",
     .lang_prompt        = "Sprache w\u00e4hlen",
     .lang_saved         = "Sprache gespeichert.",
+    .overwrite_prompt        = "Datei existiert bereits \u2014 \u00fcberschreiben?",
+    .run_cmd                 = "Ausf\u00fchren",
+    .outside_project_prompt  = "Pfad au\u00dferhalb des Projektverzeichnisses \u2014 einmalig erlauben?",
 };
 
 static Code g_code = Code::En;

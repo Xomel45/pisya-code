@@ -48,6 +48,11 @@ struct Strings {
     // /language
     const char* lang_prompt;
     const char* lang_saved;
+
+    // tools — write/bash/path
+    const char* overwrite_prompt;       // "File already exists — overwrite?"
+    const char* run_cmd;                // "Execute" (bash non-dangerous prefix)
+    const char* outside_project_prompt; // "Outside project dir — allow this once?"
 };
 
 void           set(Code c);
