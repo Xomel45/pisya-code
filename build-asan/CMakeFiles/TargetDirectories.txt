@@ -1,3 +1,0 @@
-/home/xomel45/my_prj/projects/cpp_prj/pisya-code/build-asan/CMakeFiles/pisya.dir
-/home/xomel45/my_prj/projects/cpp_prj/pisya-code/build-asan/CMakeFiles/edit_cache.dir
-/home/xomel45/my_prj/projects/cpp_prj/pisya-code/build-asan/CMakeFiles/rebuild_cache.dir
