@@ -253,25 +253,53 @@ ui::Perm ui::ask_permission(const std::string& cmd, const std::string& category)
 
 // ── ui::read_input ────────────────────────────────────────────────────────────
 
-namespace {
+// ── autocomplete ──────────────────────────────────────────────────────────────
 
-// Input history (shared across calls)
+static constexpr std::string_view g_commands[] = {
+    "/clear", "/config", "/session", "/language", "/exit", "/quit"
+};
+
+// Returns commands that start with `prefix` (prefix itself excluded).
+static std::vector<std::string> cmd_completions(const std::string& prefix) {
+    if (prefix.empty() || prefix[0] != '/') return {};
+    std::vector<std::string> out;
+    for (auto cmd : g_commands)
+        if (cmd.starts_with(prefix) && cmd != prefix)
+            out.emplace_back(cmd);
+    return out;
+}
+
+// Returns the unique completion suffix (e.g. "/l" → "anguage"),
+// or empty string if there are zero or multiple matches.
+static std::string cmd_hint(const std::string& buf) {
+    auto matches = cmd_completions(buf);
+    if (matches.size() == 1) return matches[0].substr(buf.size());
+    return {};
+}
+
+// ── input history ─────────────────────────────────────────────────────────────
+
 std::vector<std::string> g_history;
+
+// ── content_lines ─────────────────────────────────────────────────────────────
 
 // Compute how many display lines the content occupies given terminal width.
 // Prefix for line 0: "❯  " (3 chars), for rest: "   " (3 chars).
 int content_lines(const std::string& text, int W) {
-    int available = W - 3; // same for first and continuation lines
+    int available = W - 3;
     if (available <= 0) available = 1;
     int cps = utf8_len(text);
     if (cps == 0) return 1;
     return (cps + available - 1) / available;
 }
 
-// Draw the widget.
+// ── draw_widget ───────────────────────────────────────────────────────────────
+
 // Returns how many lines below the widget top the cursor now sits,
 // so clear_widget can navigate back up exactly that many lines.
-int draw_widget(const std::string& text, int cursor_cp, int W) {
+int draw_widget(const std::string& text, int cursor_cp, int W,
+                const std::string& hint,
+                const std::vector<std::string>& completions) {
     int avail    = W - 3;
     int nlines   = content_lines(text, W);
     int total_cp = utf8_len(text);
@@ -293,6 +321,25 @@ int draw_widget(const std::string& text, int cursor_cp, int W) {
                 std::cout << text[bi];
             ++line_cp;
         }
+
+        // Inline autocomplete hint: shown only on last line when cursor is at end
+        if (bi >= static_cast<int>(text.size()) && cursor_cp == total_cp
+                && !hint.empty()) {
+            int remaining = avail - line_cp;
+            int hbi = 0, hcp = 0;
+            std::string visible;
+            while (hbi < static_cast<int>(hint.size()) && hcp < remaining) {
+                unsigned char hc = hint[hbi];
+                int extra = utf8_extra(hc);
+                for (int e = 0; e <= extra && hbi < static_cast<int>(hint.size());
+                     ++e, ++hbi)
+                    visible += hint[hbi];
+                ++hcp;
+            }
+            if (!visible.empty())
+                std::cout << DIM << visible << RST;
+        }
+
         std::cout << "\n";
         if (total_cp == 0) break;
     }
@@ -303,51 +350,59 @@ int draw_widget(const std::string& text, int cursor_cp, int W) {
     // Hint bar
     std::cout << "  " << DIM << lang::S().hint_bar << RST << "\n";
 
-    // After hint \n cursor is nlines+3 lines below widget top.
-    // Move back up to the correct content line and column.
+    // Completions list (shown when Tab is pressed)
+    int comp_lines = static_cast<int>(completions.size());
+    if (!completions.empty()) {
+        for (const auto& c : completions)
+            std::cout << "  " << DIM << c << RST << "\n";
+    }
+
+    // After all output, cursor is nlines+3+comp_lines lines below widget top.
+    // Move up to the correct content line and column.
     int cursor_line = (avail > 0) ? (cursor_cp / avail) : 0;
     int cursor_col  = 3 + (avail > 0 ? cursor_cp % avail : 0);
-    int up = nlines + 2 - cursor_line;
+    int up = nlines + 2 + comp_lines - cursor_line;
     if (up > 0) std::cout << "\033[" << up << "A";
     std::cout << "\r";
     if (cursor_col > 0) std::cout << "\033[" << cursor_col << "C";
     std::cout.flush();
 
-    // Cursor is now 1 + cursor_line lines below widget top
     return 1 + cursor_line;
 }
 
 void clear_widget(int lines_below_top) {
-    // Go up to widget top, then wipe everything below
     if (lines_below_top > 0)
         std::cout << "\033[" << lines_below_top << "A";
     std::cout << "\r\033[J";
     std::cout.flush();
 }
 
-} // namespace
-
 std::string ui::read_input() {
     std::string buf;
-    int cursor_cp = 0; // cursor position in codepoints
+    int cursor_cp = 0;
 
-    int hist_idx = -1; // -1 = current input, >= 0 = history entry
-    std::string saved_buf; // save current input when browsing history
+    int  hist_idx  = -1;
+    std::string saved_buf;
+
+    bool show_completions = false;
 
     set_raw(true);
 
-    int W          = term_width();
-    int prev_cursor = draw_widget(buf, cursor_cp, W); // cursor_at_line returned
+    int W           = term_width();
+    int prev_cursor = draw_widget(buf, cursor_cp, W, {}, {});
 
     while (true) {
-        W = term_width(); // re-read on each keypress (handles resize)
+        W = term_width();
         int k = read_key();
 
         if (k == KEY_ENTER || k == '\n') {
-            // Submit
+            // Accept inline hint on Enter if cursor is at end
+            if (cursor_cp == utf8_len(buf)) {
+                std::string h = cmd_hint(buf);
+                if (!h.empty()) buf += h;
+            }
             set_raw(false);
             clear_widget(prev_cursor);
-            // Print submitted text dimly above response
             std::cout << GRN << "❯" << RST << "  " << DIM << buf << RST << "\n\n";
             if (!buf.empty()) g_history.push_back(buf);
             return buf;
@@ -358,14 +413,34 @@ std::string ui::read_input() {
             std::cout << DIM << "  " << lang::S().cancelled << RST << "\n\n";
             return "";
 
+        } else if (k == '\t') { // Tab
+            auto matches = cmd_completions(buf);
+            if (matches.size() == 1) {
+                // Unique match — complete immediately
+                buf       = matches[0];
+                cursor_cp = utf8_len(buf);
+                show_completions = false;
+            } else if (!matches.empty()) {
+                show_completions = !show_completions;
+            }
+
+        } else if (k == KEY_RIGHT && cursor_cp == utf8_len(buf)) {
+            // Right arrow at end — accept inline hint
+            std::string h = cmd_hint(buf);
+            if (!h.empty()) {
+                buf += h;
+                cursor_cp = utf8_len(buf);
+            }
+            show_completions = false;
+
         } else if (k == 127 || k == 8) { // Backspace
             if (cursor_cp > 0) {
-                // Remove codepoint before cursor
                 int before = utf8_byte_offset(buf, cursor_cp - 1);
                 int at     = utf8_byte_offset(buf, cursor_cp);
                 buf.erase(before, at - before);
                 --cursor_cp;
             }
+            show_completions = false;
 
         } else if (k == KEY_LEFT) {
             if (cursor_cp > 0) --cursor_cp;
@@ -380,7 +455,7 @@ std::string ui::read_input() {
             cursor_cp = utf8_len(buf);
 
         } else if (k == KEY_UP) {
-            // Navigate history backwards
+            show_completions = false;
             if (g_history.empty()) continue;
             if (hist_idx == -1) {
                 saved_buf = buf;
@@ -392,6 +467,7 @@ std::string ui::read_input() {
             cursor_cp = utf8_len(buf);
 
         } else if (k == KEY_DOWN) {
+            show_completions = false;
             if (hist_idx == -1) continue;
             if (hist_idx < static_cast<int>(g_history.size()) - 1) {
                 ++hist_idx;
@@ -403,21 +479,22 @@ std::string ui::read_input() {
             cursor_cp = utf8_len(buf);
 
         } else if (k >= 0x20 && k < 0x80) {
-            // ASCII printable
             int bi = utf8_byte_offset(buf, cursor_cp);
             buf.insert(bi, 1, static_cast<char>(k));
             ++cursor_cp;
+            show_completions = false;
 
         } else if (k >= 0xC0) {
-            // UTF-8 multibyte lead byte
             std::string ch = read_utf8(k);
             int bi = utf8_byte_offset(buf, cursor_cp);
             buf.insert(bi, ch);
             ++cursor_cp;
+            show_completions = false;
         }
 
-        // Redraw
         clear_widget(prev_cursor);
-        prev_cursor = draw_widget(buf, cursor_cp, W);
+        std::string hint = (cursor_cp == utf8_len(buf)) ? cmd_hint(buf) : "";
+        std::vector<std::string> comps = show_completions ? cmd_completions(buf) : std::vector<std::string>{};
+        prev_cursor = draw_widget(buf, cursor_cp, W, hint, comps);
     }
 }

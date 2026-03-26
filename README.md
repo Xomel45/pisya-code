@@ -102,4 +102,4 @@ Works well with any model that supports the OpenAI tool-calling API:
 
 ## License
 
-MIT
+[Mozilla Public License 2.0](LICENSE)
