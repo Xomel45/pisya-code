@@ -319,19 +319,26 @@ static std::string random_verb() {
 
 static void run_spinner(std::atomic<bool>& done,
                         std::chrono::steady_clock::time_point start,
-                        const std::string& word) {
+                        const std::string& word,
+                        std::stop_token st) {
     constexpr std::string_view frames[] = {"⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"};
+
+    // Save cursor position — every frame restores here and overwrites
+    std::cout << "\033[s" << std::flush;
+
     int i = 0;
-    while (!done.load()) {
+    while (!done.load() && !st.stop_requested()) {
         auto elapsed = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - start).count();
-        std::cout << "\r  " << clr::dim << frames[i % 10]
-                  << " " << word << "… " << std::format("{:.1f}s", elapsed)
-                  << clr::reset << std::flush;
+        std::cout << "\033[u\033[K  " << clr::dim
+                  << frames[i % 10] << " " << word << "… "
+                  << std::format("{:.1f}s", elapsed) << clr::reset
+                  << std::flush;
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         ++i;
     }
-    std::cout << "\r\033[K" << std::flush;
+    // Erase spinner line, leave cursor at start of clean line
+    std::cout << "\033[u\033[K" << std::flush;
 }
 
 // ── run ───────────────────────────────────────────────────────────────────────
@@ -351,8 +358,8 @@ void Agent::run(const std::string& user_message) {
             std::atomic<bool> done{false};
             auto think_start = std::chrono::steady_clock::now();
             std::string word = random_thinking();
-            std::jthread spinner([&done, think_start, word](std::stop_token) {
-                run_spinner(done, think_start, word);
+            std::jthread spinner([&done, think_start, word](std::stop_token st) {
+                run_spinner(done, think_start, word, st);
             });
 
             response = client_.chat(history_, tool_schemas);

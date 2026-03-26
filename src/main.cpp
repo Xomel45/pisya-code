@@ -2,9 +2,12 @@
 #include "config.h"
 #include "session.h"
 #include "ui.h"
+#include "../third_party/json.hpp"
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -46,7 +49,60 @@ static void print_banner(const Config& cfg, const std::string& username) {
               << clr::reset << "\n";
 }
 
-static void ask_feedback(const std::string& model) {
+// ── feedback timer ────────────────────────────────────────────────────────────
+
+static std::string feedback_path() {
+    const char* home = getenv("HOME");
+    return std::string(home ? home : ".") + "/.pisya/feedback.json";
+}
+
+static int64_t now_ts() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+// Returns true if it's time to show the feedback prompt.
+// Side effect: creates/updates ~/.pisya/feedback.json.
+static bool feedback_due() {
+    using json = nlohmann::json;
+    constexpr int64_t FIRST_DELAY =  6 * 3600;  // 6 hours
+    constexpr int64_t REPEAT      = 48 * 3600;  // 48 hours
+
+    std::string path = feedback_path();
+    int64_t ts       = now_ts();
+
+    json state;
+    if (std::filesystem::exists(path)) {
+        std::ifstream f(path);
+        try { state = json::parse(f); } catch (...) {}
+    }
+
+    int64_t first_launch = state.value("first_launch", (int64_t)0);
+    int64_t last_shown   = state.value("last_shown",   (int64_t)0);
+
+    // First ever launch — record time, don't show yet
+    if (first_launch == 0) {
+        state["first_launch"] = ts;
+        state["last_shown"]   = (int64_t)0;
+        std::filesystem::create_directories(
+            std::filesystem::path(path).parent_path());
+        std::ofstream f(path);
+        f << state.dump(2);
+        return false;
+    }
+
+    bool due = (last_shown == 0 && ts - first_launch >= FIRST_DELAY)
+            || (last_shown >  0 && ts - last_shown    >= REPEAT);
+
+    if (due) {
+        state["last_shown"] = ts;
+        std::ofstream f(path);
+        f << state.dump(2);
+    }
+    return due;
+}
+
+static void show_feedback(const std::string& model) {
     std::cout << clr::white << clr::bold << "● " << clr::reset
               << std::format("How is {} doing this session? ", model)
               << clr::dim << "(optional)" << clr::reset << "\n";
@@ -139,7 +195,7 @@ int main(int argc, char* argv[]) {
 
     if (!resumed) {
         session = Session::create(cfg.model);
-        ask_feedback(cfg.model);
+        if (feedback_due()) show_feedback(cfg.model);
     }
 
     // ── build agent ───────────────────────────────────────────────────────────

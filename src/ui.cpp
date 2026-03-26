@@ -267,35 +267,34 @@ int content_lines(const std::string& text, int W) {
     return (cps + available - 1) / available;
 }
 
-// Draw the widget. Returns number of content lines drawn.
+// Draw the widget.
+// Saves cursor position at widget start (\033[s) so clear_widget can restore it.
+// Returns 0 (unused by caller, kept for API compat).
 int draw_widget(const std::string& text, int cursor_cp, int W) {
-    int avail  = W - 3;
-    int nlines = content_lines(text, W);
+    int avail    = W - 3;
+    int nlines   = content_lines(text, W);
+    int total_cp = utf8_len(text);
+
+    // Save cursor position — clear_widget will restore here and clear down
+    std::cout << "\033[s";
 
     // Top border
     std::cout << hline(W) << "\n";
 
     // Content lines
-    // We'll iterate codepoint by codepoint filling lines
-    int cp = 0;
     int bi = 0;
-    int total_cp = utf8_len(text);
-
     for (int ln = 0; ln < nlines || (ln == 0 && total_cp == 0); ++ln) {
         if (ln == 0) std::cout << GRN << "❯" << RST << "  ";
         else         std::cout << "   ";
 
         int line_cp = 0;
-        int line_start_bi = bi;
         while (line_cp < avail && bi < static_cast<int>(text.size())) {
             unsigned char c = text[bi];
             int extra = utf8_extra(c);
             for (int e = 0; e <= extra && bi < static_cast<int>(text.size()); ++e, ++bi)
                 std::cout << text[bi];
-            ++cp;
             ++line_cp;
         }
-        (void)line_start_bi;
         std::cout << "\n";
         if (total_cp == 0) break;
     }
@@ -303,36 +302,33 @@ int draw_widget(const std::string& text, int cursor_cp, int W) {
     // Bottom border
     std::cout << hline(W) << "\n";
 
-    // Hint bar
+    // Hint bar (with \n so cursor lands on known line after widget)
     std::cout << "  " << DIM
               << "⏵⏵ отправить на enter"
               << "   shift+enter — новая строка"
               << "   ctrl+c — отмена"
-              << RST;
-    std::cout.flush();
+              << RST << "\n";
 
-    // Position terminal cursor correctly
-    // Calculate which line and column the cursor is on
-    int cursor_line = (cursor_cp == 0) ? 0 : cursor_cp / avail;
-    int cursor_col  = 3 + cursor_cp % avail;
-    // We are currently at: 1(top) + nlines(content) + 1(bottom) + 1(hint) lines below start
-    int total_lines_drawn = 1 + nlines + 1 + 1;
-    int lines_from_cursor_to_bottom = (1 + nlines - 1 - cursor_line) + 2; // bottom + hint
-    if (lines_from_cursor_to_bottom > 0)
-        std::cout << "\033[" << lines_from_cursor_to_bottom << "A";
+    // Position terminal cursor at the text cursor location inside the widget
+    // Layout: line 0 = top border, lines 1..nlines = content, nlines+1 = bottom, nlines+2 = hint
+    // After hint \n cursor is at line nlines+3 (below widget).
+    int cursor_line = (avail > 0) ? (cursor_cp / avail) : 0;
+    int cursor_col  = 3 + (avail > 0 ? cursor_cp % avail : 0);
+    // Lines to go up from below-widget to the correct content line:
+    //   (nlines+3) - (1 + cursor_line) = nlines + 2 - cursor_line
+    int up = nlines + 2 - cursor_line;
+    if (up > 0) std::cout << "\033[" << up << "A";
     std::cout << "\r";
-    if (cursor_col > 0)
-        std::cout << "\033[" << cursor_col << "C";
+    if (cursor_col > 0) std::cout << "\033[" << cursor_col << "C";
     std::cout.flush();
 
-    return total_lines_drawn;
+    return 0;
 }
 
-void clear_widget(int total_lines) {
-    // Go to start of widget, clear everything down
-    std::cout << "\r\033[" << (total_lines - 1) << "B" // go to last line
-              << "\r\033[" << total_lines << "A"        // go up to first line
-              << "\033[J";                              // clear to end
+void clear_widget(int /*unused*/) {
+    // Restore to the position saved by draw_widget, clear everything below
+    std::cout << "\033[u\033[J";
+    std::cout.flush();
 }
 
 } // namespace
@@ -346,8 +342,8 @@ std::string ui::read_input() {
 
     set_raw(true);
 
-    int W = term_width();
-    int prev_total = draw_widget(buf, cursor_cp, W);
+    int W          = term_width();
+    int prev_cursor = draw_widget(buf, cursor_cp, W); // cursor_at_line returned
 
     while (true) {
         W = term_width(); // re-read on each keypress (handles resize)
@@ -356,7 +352,7 @@ std::string ui::read_input() {
         if (k == KEY_ENTER || k == '\n') {
             // Submit
             set_raw(false);
-            clear_widget(prev_total);
+            clear_widget(prev_cursor);
             // Print submitted text dimly above response
             std::cout << GRN << "❯" << RST << "  " << DIM << buf << RST << "\n\n";
             if (!buf.empty()) g_history.push_back(buf);
@@ -364,7 +360,7 @@ std::string ui::read_input() {
 
         } else if (k == 3 || k == 4) { // Ctrl+C / Ctrl+D
             set_raw(false);
-            clear_widget(prev_total);
+            clear_widget(prev_cursor);
             std::cout << DIM << "  (отменено)" << RST << "\n\n";
             return "";
 
@@ -427,7 +423,7 @@ std::string ui::read_input() {
         }
 
         // Redraw
-        clear_widget(prev_total);
-        prev_total = draw_widget(buf, cursor_cp, W);
+        clear_widget(prev_cursor);
+        prev_cursor = draw_widget(buf, cursor_cp, W);
     }
 }

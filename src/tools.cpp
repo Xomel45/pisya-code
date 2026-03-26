@@ -81,6 +81,7 @@ std::string tools::list_dir(const std::string& path) {
 
 // ── glob_files ────────────────────────────────────────────────────────────────
 std::string tools::glob_files(const std::string& pattern, const std::string& dir) {
+    if (pattern.empty()) return "Error: pattern is empty";
     // Simple recursive search matching files by extension or name substring
     std::string result;
     try {
