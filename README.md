@@ -48,18 +48,21 @@ Pisya Code has a two-layer security model:
 - A running OpenAI-compatible AI server ([Ollama](https://ollama.com), LM Studio, etc.)
 - Linux or macOS (see Windows note below)
 
-## Build
+## Build & Install
 
 ```bash
 git clone https://github.com/Xomel45/pisya-code
 cd pisya-code
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
+./install.sh
 ```
 
-The binary is `build/pisya`. Optionally install it:
+The script builds the project and installs the binary to `/usr/local/bin/pisya` so you can run `pisya` from any directory. It will ask for your password only for the install step.
+
+Or manually:
 
 ```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
 sudo cp build/pisya /usr/local/bin/
 ```
 
