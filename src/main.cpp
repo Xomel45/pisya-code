@@ -12,6 +12,7 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <unistd.h>
 
 namespace clr {
     constexpr auto reset  = "\033[0m";
@@ -188,6 +189,15 @@ static std::string pick_session() {
 }
 
 int main(int argc, char* argv[]) {
+    if (getuid() == 0) {
+        std::cerr << "\n"
+                  << "\033[31m\033[1m" << "  ✗ " << "\033[0m"
+                  << "\033[1m" << "Запуск от root запрещён." << "\033[0m" << "\n"
+                  << "\033[2m"  << "  Не надо быть дегенератом. Запусти как обычный пользователь.\n"
+                  << "\033[0m" << "\n";
+        return 1;
+    }
+
     Config cfg      = Config::load();
     lang::set(cfg.lang);
     std::string username = get_username();
