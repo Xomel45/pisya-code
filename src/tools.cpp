@@ -66,12 +66,42 @@ static std::string first_cmd_token(const std::string& cmd) {
     return cmd.substr(i, j - i);
 }
 
-// Reloads permissions.json from project root every call (reflects manual edits).
+// Returns path to ~/.pisya/permissions.json, creating the file with defaults if absent.
+static fs::path perms_path() {
+    const char* home = getenv("HOME");
+    fs::path dir = fs::path(home ? home : ".") / ".pisya";
+    fs::path p   = dir / "permissions.json";
+
+    if (!fs::exists(p)) {
+        fs::create_directories(dir);
+        std::ofstream f(p);
+        f << R"({
+  "_note": "Глобальные расширения разрешений pisya-code (~/. pisya/permissions.json). Применяются ко всем проектам и сессиям. Жёсткие блокировки в коде всегда в приоритете — этот файл не может разрешить: sudo/su, reboot/shutdown, dd/mkfs/fdisk, массовый kill, /root и системные директории, rm -f вне проекта без подтверждения, wget/curl без подтверждения.",
+  "allowed": [
+    "git",
+    "ls",
+    "cat",
+    "echo",
+    "pwd",
+    "which",
+    "make",
+    "cmake",
+    "ninja",
+    "clang++",
+    "g++"
+  ],
+  "denied": []
+}
+)";
+    }
+    return p;
+}
+
+// Loads ~/.pisya/permissions.json on every call (reflects manual edits mid-session).
 static Perms load_perms() {
     Perms p;
-    fs::path path = project_root() / "permissions.json";
-    if (!fs::exists(path)) return p;
-    std::ifstream f(path);
+    std::ifstream f(perms_path());
+    if (!f) return p;
     try {
         auto j = nlohmann::json::parse(f);
         if (j.contains("allowed") && j["allowed"].is_array())
