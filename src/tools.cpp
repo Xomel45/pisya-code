@@ -50,6 +50,40 @@ static bool cmd_present(const std::string& cmd, const std::string& name) {
     return false;
 }
 
+// ── permissions.json (Federal Law layer) ─────────────────────────────────────
+
+struct Perms {
+    std::unordered_set<std::string> allowed; // run without confirmation
+    std::unordered_set<std::string> denied;  // always blocked
+};
+
+// Returns first shell token of a command (the actual program name).
+static std::string first_cmd_token(const std::string& cmd) {
+    size_t i = cmd.find_first_not_of(" \t");
+    if (i == std::string::npos) return "";
+    size_t j = cmd.find_first_of(" \t;|&\n", i);
+    if (j == std::string::npos) return cmd.substr(i);
+    return cmd.substr(i, j - i);
+}
+
+// Reloads permissions.json from project root every call (reflects manual edits).
+static Perms load_perms() {
+    Perms p;
+    fs::path path = project_root() / "permissions.json";
+    if (!fs::exists(path)) return p;
+    std::ifstream f(path);
+    try {
+        auto j = nlohmann::json::parse(f);
+        if (j.contains("allowed") && j["allowed"].is_array())
+            for (const auto& a : j["allowed"])
+                p.allowed.insert(a.get<std::string>());
+        if (j.contains("denied") && j["denied"].is_array())
+            for (const auto& d : j["denied"])
+                p.denied.insert(d.get<std::string>());
+    } catch (...) {}
+    return p;
+}
+
 // ── hard-blocked commands — no confirmation possible ──────────────────────────
 
 static std::string hard_block(const std::string& cmd) {
@@ -119,6 +153,19 @@ std::string tools::read_file(const std::string& path) {
         result += std::format("{:>4}\t{}\n", n++, line);
 
     return result.empty() ? "(empty file)" : result;
+}
+
+// ── create_file ───────────────────────────────────────────────────────────────
+std::string tools::create_file(const std::string& path) {
+    if (auto err = path_guard(path); !err.empty()) return err;
+
+    if (fs::exists(path))
+        return std::format("File '{}' already exists.", path);
+
+    fs::create_directories(fs::path(path).parent_path());
+    std::ofstream f(path);
+    if (!f) return std::format("Error: cannot create '{}'", path);
+    return std::format("Created '{}'", path);
 }
 
 // ── write_file ────────────────────────────────────────────────────────────────
@@ -225,25 +272,56 @@ static std::string run_command(const std::string& command) {
 }
 
 std::string tools::bash(const std::string& command) {
-    // Hard-blocked — no confirmation possible, ever
+    // ── Constitution layer 1: hard-blocked forever, no override ──────────────
     if (auto block = hard_block(command); !block.empty()) return block;
 
+    // ── Constitution layer 2: always-ask rules (no session bypass, ever) ─────
+    // wget/curl — network downloads must be confirmed per request
     std::string category = ui::danger_category(command);
+    bool is_network = (category == "скачивание из сети");
 
-    if (category.empty()) {
+    // rm -f / rm -rf — force-delete always requires confirmation, especially outside project
+    bool is_rm_force = cmd_present(command, "rm") &&
+                       (command.find("-f") != std::string::npos  ||
+                        command.find("-rf") != std::string::npos ||
+                        command.find("-fr") != std::string::npos);
+
+    bool always_ask = is_network || is_rm_force;
+
+    // ── Federal Law layer: permissions.json ───────────────────────────────────
+    // (only applies when Constitution doesn't require always_ask)
+    std::string token = first_cmd_token(command);
+    Perms perms = load_perms();
+
+    if (perms.denied.count(token))
+        return std::format("Error: '{}' is blocked by permissions.json.", token);
+
+    if (!always_ask && perms.allowed.count(token))
+        return run_command(command); // auto-allowed, no confirmation needed
+
+    // ── Normal permission flow ────────────────────────────────────────────────
+    if (always_ask) {
+        // Per-request: always ask, no "allow for session" option
+        std::string cat = category.empty()
+            ? (is_rm_force ? "принудительное удаление" : "команда")
+            : category;
+        auto perm = ui::ask_permission(command, cat, /*offer_session=*/false);
+        if (perm == ui::Perm::Deny) return "Command cancelled by user.";
+
+    } else if (category.empty()) {
         // Non-dangerous — simple confirm
         const auto& L = lang::S();
         std::string choice = ui::select(
             std::format("{}: {}", L.run_cmd, command),
             {L.perm_allow, L.perm_deny});
         if (choice != L.perm_allow) return "Command cancelled by user.";
+
     } else {
-        // Dangerous — check session allowlist first
+        // Dangerous — check session allowlist
         if (!g_session_allowed.count(category)) {
             auto perm = ui::ask_permission(command, category);
-            if (perm == ui::Perm::Deny)          return "Command cancelled by user.";
-            if (perm == ui::Perm::AllowSession)  g_session_allowed.insert(category);
-            // Perm::Allow or AllowSession → proceed
+            if (perm == ui::Perm::Deny)         return "Command cancelled by user.";
+            if (perm == ui::Perm::AllowSession) g_session_allowed.insert(category);
         }
     }
 
@@ -263,6 +341,9 @@ std::string tools::execute(const std::string& name, const nlohmann::json& args) 
     try {
         if (name == "read_file")
             return read_file(args.at("path").get<std::string>());
+
+        if (name == "create_file")
+            return create_file(args.at("path").get<std::string>());
 
         if (name == "write_file")
             return write_file(args.at("path").get<std::string>(),
@@ -309,6 +390,15 @@ nlohmann::json tools::get_schemas() {
             {"parameters", {
                 {"type", "object"},
                 {"properties", {{"path", {{"type","string"},{"description","File path"}}}}},
+                {"required", json::array({"path"})}
+            }}
+        }}},
+        {{"type", "function"}, {"function", {
+            {"name", "create_file"},
+            {"description", "Create a new empty file at the given path. Fails if the file already exists. Use write_file if you want to write content."},
+            {"parameters", {
+                {"type", "object"},
+                {"properties", {{"path", {{"type","string"},{"description","File path (from project root)"}}}}},
                 {"required", json::array({"path"})}
             }}
         }}},

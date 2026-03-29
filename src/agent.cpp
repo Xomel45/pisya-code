@@ -193,7 +193,19 @@ void Agent::print_tool_output(const std::string& name,
                                const std::string& result) {
     bool is_error = result.starts_with("Error:");
 
-    if (name == "write_file") {
+    if (name == "create_file") {
+        std::string path = args.value("path", "?");
+        if (is_error) {
+            print_failure(result);
+        } else {
+            std::cout << clr::green << clr::bold << "● " << clr::reset
+                      << clr::bold << "Create file " << clr::reset
+                      << clr::dim << "[" << clr::reset
+                      << path
+                      << clr::dim << "]" << clr::reset << "\n";
+        }
+
+    } else if (name == "write_file") {
         std::string path = args.value("path", "?");
         if (is_error) {
             print_failure(result);
@@ -295,6 +307,8 @@ static std::string random_thinking() {
         "Imagining",    "Plotting",     "Wondering",    "Deliberating",
         "Summoning",    "Wrangling",    "Vibing",       "Crunching",
         "Manifesting",  "Conjuring",    "Mulling",      "Stewing",
+        "Debugging",    "Procrastinating","Philosophizing","Overfitting",
+        "Suffering",    "Caffeinating", "Tokenizing",   "Hallucinating harder",
     };
     static constexpr std::string_view RU[] = {
         "Думаю",        "Соображаю",    "Варю",         "Колдую",
@@ -303,6 +317,8 @@ static std::string random_thinking() {
         "Воображаю",    "Строю планы",  "Гадаю",        "Взвешиваю",
         "Призываю",     "Борюсь",       "Вибрирую",     "Перемалываю",
         "Манифестирую", "Торможу",      "Жую",          "Тупею",
+        "Дебажу",       "Прокрастинирую","Философствую","Переобучаюсь",
+        "Страдаю",      "Кофеинируюсь", "Токенизирую",  "Галлюцинирую ещё сильнее",
     };
     static constexpr std::string_view DE[] = {
         "Denke",        "Grüble",       "Sinne",        "Plane",
@@ -311,6 +327,8 @@ static std::string random_thinking() {
         "Fantasiere",   "Schmede",      "Wundere mich", "Abwäge",
         "Beschwöre",    "Ringe",        "Vibe",         "Verarbeite",
         "Manifestiere", "Zaubers",      "Kaue",         "Schmorre",
+        "Debugge",      "Prokrastiniere","Philosophiere","Überanpasse",
+        "Leide",        "Koffeiniere",  "Tokenisiere",  "Halluziniere intensiver",
     };
     static std::mt19937 rng{std::random_device{}()};
     switch (lang::current()) {
@@ -341,6 +359,8 @@ static std::string random_verb() {
         "Simulated",  "Meditated",   "Reasoned",    "Deduced",
         "Extrapolated","Hallucinated","Schemed",     "Devised",
         "Mulled",     "Stewed",      "Roasted",     "Smoked",
+        "Debugged",   "Suffered",    "Overcomplicated","Philosophized",
+        "Procrastinated","Tokenized","Vibed",       "Caffeinated",
     };
     static constexpr std::string_view RU[] = {
         "Сварил",       "Приготовил",  "Обжарил",     "Заварил",
@@ -351,6 +371,8 @@ static std::string random_verb() {
         "Смоделировал", "Помедитировал","Осмыслил",   "Вывел",
         "Экстраполировал","Нагалюцинировал","Схитрил","Придумал",
         "Пожевал",      "Потомил",     "Прожарил",    "Накурился",
+        "Задебажил",    "Пострадал",   "Усложнил",    "Пофилософствовал",
+        "Прокрастинировал","Токенизировал","Завибрировал","Кофеинировался",
     };
     static constexpr std::string_view DE[] = {
         "Gebrutzelt",   "Gekocht",     "Sautiert",    "Gebraut",
@@ -361,6 +383,8 @@ static std::string random_verb() {
         "Simuliert",    "Meditiert",   "Geschlussfolgert","Deduziert",
         "Extrapoliert", "Halluziniert","Geschachert", "Erdacht",
         "Durchgekaut",  "Geschmort",   "Geröstet",    "Verraucht",
+        "Debuggt",      "Gelitten",    "Überkompliziert","Philosophiert",
+        "Prokrastiniert","Tokenisiert","Gevibt",      "Koffeiniert",
     };
     static std::mt19937 rng{std::random_device{}()};
     switch (lang::current()) {

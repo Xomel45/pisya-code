@@ -22,6 +22,36 @@ namespace clr {
     constexpr auto green  = "\033[32m";
 }
 
+// ── git checkpoint ────────────────────────────────────────────────────────────
+
+static void git_init_if_needed() {
+    // Already inside a git repo — do nothing
+    if (std::system("git rev-parse --git-dir >/dev/null 2>&1") == 0) return;
+
+    std::system("git init -q 2>/dev/null");
+    std::system("git add -A 2>/dev/null");
+    std::system("git commit -q -m \"pisya: initial state\" 2>/dev/null");
+}
+
+// Sanitize user message for use as a git commit message subject line.
+static std::string sanitize_for_git(const std::string& msg) {
+    std::string out;
+    out.reserve(msg.size());
+    for (char c : msg) {
+        if (c == '\n' || c == '\r') { out += ' '; }
+        else if (c == '"' || c == '\\' || c == '`' || c == '$') { /* strip */ }
+        else out += c;
+    }
+    if (out.size() > 60) { out.resize(60); out += "…"; }
+    return out;
+}
+
+static void git_checkpoint(const std::string& user_msg) {
+    std::string subject = sanitize_for_git(user_msg);
+    std::string cmd = "git add -A && git commit -q -m \"pisya: " + subject + "\" 2>/dev/null";
+    std::system(cmd.c_str());
+}
+
 static std::string get_username() {
     if (const char* u = getenv("USER"); u && *u) return u;
     if (const char* h = getenv("HOME"); h && *h)
@@ -39,7 +69,9 @@ static void print_banner(const Config& cfg, const std::string& username,
               << R"( |  __/| \__ \ |_| | (_| | | |__| (_) | (_| |  __|)" << "\n"
               << R"( |_|   |_|___/\__, |\__,_|  \____\___/ \__,_|\___|)" << "\n"
               << R"(              |___/                                 )" << "\n"
-              << clr::reset << "\n"
+              << clr::reset
+              << clr::dim << "                                              v0.1.1" << clr::reset << "\n"
+              << "\n"
               << "  " << clr::dim << "Local AI coding assistant" << clr::reset
               << "  " << clr::white << clr::bold << "Hey, " << username << "!" << clr::reset
               << "\n\n";
@@ -180,6 +212,7 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    git_init_if_needed();
     print_banner(cfg, username, model_extra);
 
     // ── load or create session ────────────────────────────────────────────────
@@ -263,6 +296,8 @@ int main(int argc, char* argv[]) {
         session.messages = agent.get_history();
         session.model    = cfg.model;
         session.save();
+
+        git_checkpoint(input);
     }
 
     return 0;

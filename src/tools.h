@@ -6,6 +6,7 @@
 namespace tools {
 
 std::string read_file(const std::string& path);
+std::string create_file(const std::string& path);
 std::string write_file(const std::string& path, const std::string& content);
 std::string edit_file(const std::string& path,
                       const std::string& old_str,

@@ -230,7 +230,8 @@ std::string ui::danger_category(const std::string& cmd) {
 
 // ── ui::ask_permission ────────────────────────────────────────────────────────
 
-ui::Perm ui::ask_permission(const std::string& cmd, const std::string& category) {
+ui::Perm ui::ask_permission(const std::string& cmd, const std::string& category,
+                            bool offer_session) {
     const auto& L = lang::S();
     std::cout << "\n  " << YEL << BOLD << "⚠ " << RST
               << YEL << L.danger_title << RST;
@@ -239,11 +240,10 @@ ui::Perm ui::ask_permission(const std::string& cmd, const std::string& category)
     std::cout << "\n"
               << DIM << "  $ " << RST << cmd << "\n";
 
-    std::vector<std::string> opts = {
-        L.perm_allow,
-        std::string(L.perm_allow_session) + " (" + category + ")",
-        L.perm_deny
-    };
+    std::vector<std::string> opts = {L.perm_allow};
+    if (offer_session)
+        opts.push_back(std::string(L.perm_allow_session) + " (" + category + ")");
+    opts.push_back(L.perm_deny);
 
     std::string choice = ui::select(L.perm_prompt, opts);
     if (choice == L.perm_allow)                               return Perm::Allow;

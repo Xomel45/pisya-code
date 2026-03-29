@@ -14,8 +14,10 @@ std::string select(const std::string& prompt,
 enum class Perm { Allow, AllowSession, Deny };
 
 // Show permission dialog for a shell command.
-// category — human-readable type ("удаление", "скачивание", etc.)
-Perm ask_permission(const std::string& cmd, const std::string& category);
+// category      — human-readable type ("удаление", "скачивание", etc.)
+// offer_session  — whether to show the "Allow for this session" option
+Perm ask_permission(const std::string& cmd, const std::string& category,
+                    bool offer_session = true);
 
 // Detect dangerous category from a shell command string.
 // Returns "" for safe/unknown commands.
