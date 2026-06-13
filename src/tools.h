@@ -13,6 +13,8 @@ std::string edit_file(const std::string& path,
                       const std::string& new_str);
 std::string list_dir(const std::string& path);
 std::string glob_files(const std::string& pattern, const std::string& dir);
+std::string search_files(const std::string& pattern, const std::string& dir,
+                         const std::string& file_glob);
 std::string bash(const std::string& command);
 std::string ask_user(const std::string& question,
                      const std::vector<std::string>& options);

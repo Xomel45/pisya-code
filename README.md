@@ -1,6 +1,6 @@
 # Pisya Code  `v0.1.1`
 
-A local AI coding assistant written in C++20. Connects to any OpenAI-compatible model running on your local network (Ollama, LM Studio, etc.) and edits your files directly — like Claude Code, but fully offline.
+A local AI coding assistant written in C++23. Connects to any OpenAI-compatible model running on your local network (Ollama, LM Studio, etc.) and edits your files directly — like Claude Code, but fully offline.
 
 ```
   ____  _                    ____          _
@@ -14,7 +14,7 @@ A local AI coding assistant written in C++20. Connects to any OpenAI-compatible 
 ## Features
 
 - **Agentic loop** — the model reads, writes, and edits files autonomously until the task is done
-- **File tools** — `read_file`, `create_file`, `write_file`, `edit_file`, `list_dir`, `glob_files`
+- **File tools** — `read_file`, `create_file`, `write_file`, `edit_file`, `list_dir`, `glob_files`, `search_files`
 - **Shell** — `bash` tool with per-command confirmation and session-level allowlist for dangerous ops
 - **Interactive Q&A** — `ask_user` tool lets the model ask you questions mid-task
 - **Session persistence** — auto-saves every conversation; resume with `pisya --resume`
@@ -43,7 +43,7 @@ Pisya Code has a two-layer security model:
 
 ## Requirements
 
-- GCC 13+ or Clang 16+ (C++20)
+- GCC 13+ or Clang 17+ (C++23)
 - CMake 3.20+
 - A running OpenAI-compatible AI server ([Ollama](https://ollama.com), LM Studio, etc.)
 - Linux or macOS (see Windows note below)

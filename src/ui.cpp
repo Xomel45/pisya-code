@@ -124,7 +124,6 @@ constexpr auto RST  = "\033[0m";
 constexpr auto DIM  = "\033[2m";
 constexpr auto BOLD = "\033[1m";
 constexpr auto GRN  = "\033[32m";
-constexpr auto RED  = "\033[31m";
 constexpr auto YEL  = "\033[33m";
 constexpr auto WHT  = "\033[97m";
 
@@ -199,17 +198,13 @@ std::string ui::select(const std::string& prompt,
 // ── ui::danger_category ───────────────────────────────────────────────────────
 
 std::string ui::danger_category(const std::string& cmd) {
-    // Helpers
     auto starts = [&](const std::string& prefix) {
         return cmd.starts_with(prefix);
     };
-    auto contains = [&](const std::string& sub) {
-        return cmd.find(sub) != std::string::npos;
-    };
 
-    if (contains("sudo"))                                      return "sudo";
+    if (cmd.contains("sudo"))                                  return "sudo";
     if (starts("rm ") || starts("rm\t") ||
-        contains(" rm ") || contains(" rmdir"))                return "удаление файлов";
+        cmd.contains(" rm ") || cmd.contains(" rmdir"))        return "удаление файлов";
     if (starts("curl ") || starts("wget "))                    return "скачивание из сети";
     if (starts("apt")  || starts("apt-get") ||
         starts("yum")  || starts("dnf")     ||
@@ -223,7 +218,7 @@ std::string ui::danger_category(const std::string& cmd) {
     if (starts("dd ") || starts("mkfs") ||
         starts("fdisk") || starts("parted"))                   return "дисковая операция";
     if (starts("chmod") || starts("chown"))                    return "права доступа";
-    if (contains("> /") || contains(">> /"))                   return "запись в системный файл";
+    if (cmd.contains("> /") || cmd.contains(">> /"))           return "запись в системный файл";
 
     return ""; // safe / unknown
 }

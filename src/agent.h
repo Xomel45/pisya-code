@@ -23,7 +23,6 @@ private:
 
     void handle_tool_calls(const nlohmann::json& tool_calls);
     void print_commentary(const std::string& text);
-    void print_file_success(const std::string& label, const std::string& path, const std::string& detail);
     void print_failure(const std::string& msg);
     void print_info_tool(const std::string& label, const std::string& path);
     void print_tool_output(const std::string& name, const nlohmann::json& args, const std::string& result);

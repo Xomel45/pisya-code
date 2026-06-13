@@ -182,10 +182,8 @@ static std::string pick_session() {
     for (int i = 0; i < (int)options.size(); ++i)
         if (options[i] == choice) return sessions[i].id;
 
-    return ""; // "Свой ответ..." — user typed an ID directly
-               // In that case choice IS the typed ID
-               // Check if it matches any known session
-    // (unreachable after the loop — if custom input, return it as-is)
+    // "Свой ответ..." — user typed a session ID directly, return it as-is
+    return choice;
 }
 
 int main(int argc, char* argv[]) {

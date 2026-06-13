@@ -19,7 +19,6 @@ namespace clr {
     constexpr auto white  = "\033[97m";
     constexpr auto green  = "\033[32m";
     constexpr auto red    = "\033[31m";
-    constexpr auto yellow = "\033[33m";
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -31,19 +30,6 @@ void Agent::print_commentary(const std::string& text) {
     std::cout << "\n"
               << clr::white << clr::bold << "● " << clr::reset
               << text << "\n";
-}
-
-// ● (green) — successful file operation
-void Agent::print_file_success(const std::string& label,
-                                const std::string& path,
-                                const std::string& detail) {
-    std::cout << clr::green << clr::bold << "● " << clr::reset
-              << clr::bold << label << clr::reset
-              << clr::dim << "(" << clr::reset
-              << path
-              << clr::dim << ")" << clr::reset << "\n";
-    if (!detail.empty())
-        std::cout << clr::dim << "  ⎿  " << clr::reset << detail << "\n";
 }
 
 // ● (red) — failure
@@ -239,6 +225,15 @@ void Agent::print_tool_output(const std::string& name,
         std::string pat = args.value("pattern", "?");
         if (is_error) print_failure(result);
         else          print_info_tool("Glob", pat);
+
+    } else if (name == "search_files") {
+        std::string pat = args.value("pattern", "?");
+        if (is_error) {
+            print_failure(result);
+        } else {
+            print_info_tool("Search", pat);
+            print_preview(result, 8);
+        }
 
     } else if (name == "bash") {
         if (is_error) {

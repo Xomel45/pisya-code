@@ -7,8 +7,8 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <regex>
 #include <sstream>
-#include <stdexcept>
 #include <unordered_set>
 
 // Categories allowed for the whole session (populated by user choice)
@@ -244,6 +244,32 @@ std::string tools::edit_file(const std::string& path,
     return std::format("Edited '{}' successfully", path);
 }
 
+// ── ignored directories (build artifacts, VCS, caches) ───────────────────────
+
+static bool is_ignored_dir(const std::string& name) {
+    static const std::unordered_set<std::string> ignored = {
+        ".git", ".idea", ".cache", ".vscode", "node_modules",
+        "build", "build-asan",
+    };
+    return ignored.count(name) > 0 || name.starts_with("cmake-build-");
+}
+
+// ── naive glob matching ───────────────────────────────────────────────────────
+
+// Supports "*.ext" (suffix), "*name*" (substring) and plain substring patterns.
+static bool naive_glob_match(const std::string& pattern, const std::string& path) {
+    if (pattern.size() >= 2 && pattern.front() == '*' && pattern.back() == '*') {
+        std::string mid = pattern.substr(1, pattern.size() - 2);
+        return path.contains(mid);
+    }
+    if (!pattern.empty() && pattern.front() == '*') {
+        std::string ext = pattern.substr(1);
+        return path.size() >= ext.size() &&
+               path.compare(path.size() - ext.size(), ext.size(), ext) == 0;
+    }
+    return path.contains(pattern);
+}
+
 // ── list_dir ──────────────────────────────────────────────────────────────────
 std::string tools::list_dir(const std::string& path) {
     if (auto err = path_guard(path); !err.empty()) return err;
@@ -264,27 +290,76 @@ std::string tools::list_dir(const std::string& path) {
 std::string tools::glob_files(const std::string& pattern, const std::string& dir) {
     if (pattern.empty()) return "Error: pattern is empty";
     if (auto err = path_guard(dir); !err.empty()) return err;
-    // Simple recursive search matching files by extension or name substring
+
     std::string result;
     try {
-        for (const auto& entry : fs::recursive_directory_iterator(
-                 dir, fs::directory_options::skip_permission_denied)) {
-            std::string p = entry.path().string();
-            // Naive glob: support "*.ext" and "*name*"
-            if (pattern.front() == '*' && pattern.back() == '*') {
-                std::string mid = pattern.substr(1, pattern.size() - 2);
-                if (p.find(mid) != std::string::npos) result += p + "\n";
-            } else if (pattern.front() == '*') {
-                std::string ext = pattern.substr(1);
-                if (p.size() >= ext.size() &&
-                    p.substr(p.size() - ext.size()) == ext)
-                    result += p + "\n";
-            } else {
-                if (p.find(pattern) != std::string::npos) result += p + "\n";
+        for (auto it = fs::recursive_directory_iterator(
+                 dir, fs::directory_options::skip_permission_denied);
+             it != fs::recursive_directory_iterator(); ++it) {
+            const auto& entry = *it;
+            if (entry.is_directory()) {
+                if (is_ignored_dir(entry.path().filename().string()))
+                    it.disable_recursion_pending();
+                continue;
             }
+            std::string p = entry.path().string();
+            if (naive_glob_match(pattern, p)) result += p + "\n";
         }
     } catch (...) {}
     return result.empty() ? "No files found" : result;
+}
+
+// ── search_files ──────────────────────────────────────────────────────────────
+std::string tools::search_files(const std::string& pattern, const std::string& dir,
+                                  const std::string& file_glob) {
+    if (pattern.empty()) return "Error: pattern is empty";
+    if (auto err = path_guard(dir); !err.empty()) return err;
+
+    std::regex re;
+    try {
+        re = std::regex(pattern);
+    } catch (const std::regex_error& e) {
+        return std::format("Error: invalid regex '{}': {}", pattern, e.what());
+    }
+
+    constexpr int MAX_MATCHES = 200;
+    int matches = 0;
+    std::string result;
+
+    try {
+        for (auto it = fs::recursive_directory_iterator(
+                 dir, fs::directory_options::skip_permission_denied);
+             it != fs::recursive_directory_iterator(); ++it) {
+            const auto& entry = *it;
+            if (entry.is_directory()) {
+                if (is_ignored_dir(entry.path().filename().string()))
+                    it.disable_recursion_pending();
+                continue;
+            }
+            if (!entry.is_regular_file()) continue;
+
+            std::string p = entry.path().string();
+            if (!file_glob.empty() && !naive_glob_match(file_glob, p)) continue;
+
+            std::ifstream f(entry.path(), std::ios::binary);
+            std::string line;
+            int lineno = 0;
+            while (std::getline(f, line)) {
+                ++lineno;
+                if (line.find('\0') != std::string::npos) break; // skip binary files
+
+                if (std::regex_search(line, re)) {
+                    result += std::format("{}:{}: {}\n", p, lineno, line);
+                    if (++matches >= MAX_MATCHES) {
+                        result += std::format("… truncated at {} matches\n", MAX_MATCHES);
+                        return result;
+                    }
+                }
+            }
+        }
+    } catch (...) {}
+
+    return result.empty() ? "No matches found" : result;
 }
 
 // ── bash ──────────────────────────────────────────────────────────────────────
@@ -391,6 +466,11 @@ std::string tools::execute(const std::string& name, const nlohmann::json& args) 
             return glob_files(args.at("pattern").get<std::string>(),
                               args.value("dir", "."));
 
+        if (name == "search_files")
+            return search_files(args.at("pattern").get<std::string>(),
+                                args.value("dir", "."),
+                                args.value("file_glob", ""));
+
         if (name == "bash")
             return bash(args.at("command").get<std::string>());
 
@@ -473,6 +553,19 @@ nlohmann::json tools::get_schemas() {
                 {"properties", {
                     {"pattern", {{"type","string"},{"description","Glob pattern"}}},
                     {"dir",     {{"type","string"},{"description","Root directory, default '.'"}}}
+                }},
+                {"required", json::array({"pattern"})}
+            }}
+        }}},
+        {{"type", "function"}, {"function", {
+            {"name", "search_files"},
+            {"description", "Search file contents recursively for a regex pattern (ECMAScript syntax). Returns matches as 'path:line: content'. Use this to find code by content instead of reading whole files."},
+            {"parameters", {
+                {"type", "object"},
+                {"properties", {
+                    {"pattern",   {{"type","string"},{"description","Regex pattern to search for"}}},
+                    {"dir",       {{"type","string"},{"description","Root directory, default '.'"}}},
+                    {"file_glob", {{"type","string"},{"description","Optional file filter, e.g. '*.cpp'"}}}
                 }},
                 {"required", json::array({"pattern"})}
             }}
