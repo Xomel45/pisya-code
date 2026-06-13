@@ -1,11 +1,62 @@
 #define CPPHTTPLIB_NO_EXCEPTIONS
 #include "ai_client.h"
 #include "lang.h"
+
+// GCC's -Warray-bounds= misfires on httplib's Client/SSLClient destructor
+// chain once CPPHTTPLIB_OPENSSL_SUPPORT is enabled (it conflates the
+// ClientImpl- and SSLClient-sized allocations made by the two constructors).
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
 #include "../third_party/httplib.h"
+#pragma GCC diagnostic pop
 #include <format>
 #include <random>
+#include <regex>
 #include <stdexcept>
 #include <string_view>
+
+namespace {
+
+struct ApiUrl {
+    std::string origin; // scheme://host[:port]
+    std::string path;   // "" or "/v1" etc. (no trailing slash)
+    std::string host;   // host only, for display
+    int         port;   // for display
+};
+
+ApiUrl parse_api_url(const std::string& raw) {
+    std::string url = raw;
+    if (url.find("://") == std::string::npos) url = "https://" + url;
+
+    static const std::regex re(R"(^(https?)://([^/]+)(/.*)?$)");
+    std::smatch m;
+    ApiUrl out;
+    if (!std::regex_match(url, m, re)) {
+        out.origin = url;
+        out.host   = url;
+        out.port   = 443;
+        return out;
+    }
+
+    std::string scheme    = m[1].str();
+    std::string host_port = m[2].str();
+    out.path   = m[3].str();
+    if (!out.path.empty() && out.path.back() == '/') out.path.pop_back();
+    out.origin = scheme + "://" + host_port;
+
+    auto colon = host_port.find(':');
+    if (colon != std::string::npos) {
+        out.host = host_port.substr(0, colon);
+        try { out.port = std::stoi(host_port.substr(colon + 1)); }
+        catch (...) { out.port = scheme == "https" ? 443 : 80; }
+    } else {
+        out.host = host_port;
+        out.port = scheme == "https" ? 443 : 80;
+    }
+    return out;
+}
+
+} // namespace
 
 static std::string random_conn_error(const std::string& host, int port) {
     static constexpr std::string_view EN[] = {
@@ -19,6 +70,10 @@ static std::string random_conn_error(const std::string& host, int port) {
         "{}:{} — connection refused. Classic.",
         "Knocked on {}:{}, nobody answered.",
         "{}:{} is off the grid. Launch the server and try again.",
+        "{}:{} sent us to voicemail.",
+        "Tried {}:{} — straight to the void.",
+        "{}:{} pulled the Irish goodbye.",
+        "Pinged {}:{}. Heard crickets.",
     };
     static constexpr std::string_view RU[] = {
         "{}:{} не отвечает — ты запустил Ollama?",
@@ -31,6 +86,11 @@ static std::string random_conn_error(const std::string& host, int port) {
         "{}:{} ушёл в офлайн. Сначала запусти сервер.",
         "Постучались в {}:{} — никого нет.",
         "{}:{} недоступен. Ollama запущен?",
+        "{}:{} сбросил звонок.",
+        "Написал в {}:{} — там последний раз были онлайн три года назад.",
+        "{}:{} тихо съехал, не предупредив.",
+        "Пингую {}:{} — в ответ только эхо.",
+        "Присовываю {}:{} — в ответ... Ответа нет, он 200.",
     };
     static constexpr std::string_view DE[] = {
         "{}:{} antwortet nicht — hast du Ollama gestartet?",
@@ -43,6 +103,10 @@ static std::string random_conn_error(const std::string& host, int port) {
         "{}:{} ist offline. Erst den Server starten.",
         "An {}:{} geklopft — keine Antwort.",
         "{}:{} nicht erreichbar. Läuft Ollama?",
+        "{}:{} ist auf Tauchstation.",
+        "{}:{} hat sich davongeschlichen.",
+        "Bei {}:{} brennt das Licht, aber niemand öffnet.",
+        "{}:{} angepingt — nur Grillen zu hören.",
     };
 
     static std::mt19937 rng{std::random_device{}()};
@@ -65,10 +129,24 @@ static std::string random_conn_error(const std::string& host, int port) {
     return std::vformat(fmt, std::make_format_args(host, port));
 }
 
-AIClient::AIClient(const std::string& host, int port, const std::string& model)
-    : host_(host), port_(port), model_(model) {}
+AIClient::AIClient(const Config& cfg)
+    : api_mode_(!cfg.api_url.empty()), model_(cfg.model) {
+    if (api_mode_) {
+        ApiUrl u     = parse_api_url(cfg.api_url);
+        host_        = u.host;
+        port_        = u.port;
+        origin_      = u.origin;
+        path_prefix_ = u.path;
+        api_key_     = cfg.api_key;
+    } else {
+        host_ = cfg.host;
+        port_ = cfg.port;
+    }
+}
 
 std::optional<AIClient::ModelInfo> AIClient::fetch_model_info() const {
+    if (api_mode_) return std::nullopt; // Ollama-specific endpoint
+
     httplib::Client cli(host_, port_);
     cli.set_connection_timeout(3);
     cli.set_read_timeout(5);
@@ -121,14 +199,27 @@ nlohmann::json AIClient::build_request(const std::vector<Message>& messages,
 
 nlohmann::json AIClient::chat(const std::vector<Message>& messages,
                                const nlohmann::json& tools) {
-    httplib::Client cli(host_, port_);
-    cli.set_read_timeout(300); // 5 min — large models can be slow
-    cli.set_write_timeout(30);
-
     nlohmann::json req = build_request(messages, tools);
     std::string body   = req.dump();
 
-    auto res = cli.Post("/v1/chat/completions", body, "application/json");
+    httplib::Result res;
+    if (api_mode_) {
+        httplib::Client cli(origin_);
+        cli.set_read_timeout(300); // 5 min — large models can be slow
+        cli.set_write_timeout(30);
+
+        httplib::Headers headers;
+        if (!api_key_.empty())
+            headers.emplace("Authorization", "Bearer " + api_key_);
+
+        res = cli.Post(path_prefix_ + "/chat/completions", headers, body, "application/json");
+    } else {
+        httplib::Client cli(host_, port_);
+        cli.set_read_timeout(300); // 5 min — large models can be slow
+        cli.set_write_timeout(30);
+
+        res = cli.Post("/v1/chat/completions", body, "application/json");
+    }
 
     if (!res) {
         throw std::runtime_error(random_conn_error(host_, port_));

@@ -53,6 +53,10 @@ static constexpr Strings EN = {
     .rc_stopped              = "Remote control stopped.",
     .rc_not_running          = "Remote control isn't running.",
     .rc_failed               = "Couldn't start the remote control server.",
+    .api_url_prompt          = "API base URL (e.g. https://api.openai.com/v1):",
+    .api_key_prompt          = "API key (leave empty if none):",
+    .api_model_prompt        = "Model name (leave empty to keep current):",
+    .api_saved               = "API config saved.",
 };
 
 static constexpr Strings RU = {
@@ -106,6 +110,10 @@ static constexpr Strings RU = {
     .rc_stopped              = "\u0423\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043e.",
     .rc_not_running          = "\u0423\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u043d\u0435 \u0437\u0430\u043f\u0443\u0449\u0435\u043d\u043e.",
     .rc_failed               = "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0441\u0435\u0440\u0432\u0435\u0440 \u0443\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0433\u043e \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u044f.",
+    .api_url_prompt          = "\u0411\u0430\u0437\u043e\u0432\u044b\u0439 URL API (\u043d\u0430\u043f\u0440\u0438\u043c\u0435\u0440, https://api.openai.com/v1):",
+    .api_key_prompt          = "API-\u043a\u043b\u044e\u0447 (\u043e\u0441\u0442\u0430\u0432\u044c \u043f\u0443\u0441\u0442\u044b\u043c, \u0435\u0441\u043b\u0438 \u043d\u0435\u0442):",
+    .api_model_prompt        = "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043c\u043e\u0434\u0435\u043b\u0438 (\u043e\u0441\u0442\u0430\u0432\u044c \u043f\u0443\u0441\u0442\u044b\u043c, \u0447\u0442\u043e\u0431\u044b \u043d\u0435 \u043c\u0435\u043d\u044f\u0442\u044c):",
+    .api_saved               = "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 API \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u044b.",
 };
 
 static constexpr Strings DE = {
@@ -159,6 +167,10 @@ static constexpr Strings DE = {
     .rc_stopped              = "Fernsteuerung gestoppt.",
     .rc_not_running          = "Fernsteuerung l\u00e4uft nicht.",
     .rc_failed               = "Der Fernsteuerungsserver konnte nicht gestartet werden.",
+    .api_url_prompt          = "API-Basis-URL (z. B. https://api.openai.com/v1):",
+    .api_key_prompt          = "API-Schlüssel (leer lassen, falls keiner):",
+    .api_model_prompt        = "Modellname (leer lassen, um aktuellen zu behalten):",
+    .api_saved               = "API-Konfiguration gespeichert.",
 };
 
 static Code g_code = Code::En;

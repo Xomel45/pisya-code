@@ -195,20 +195,44 @@ int main(int argc, char* argv[]) {
     lang::set(cfg.lang);
     std::string username = get_username();
 
-    // ── parse --resume ────────────────────────────────────────────────────────
+    // ── parse --resume / -api ────────────────────────────────────────────────
     std::string resume_id;
+    bool        api_setup = false;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--resume") {
             if (i + 1 < argc) resume_id = argv[++i];
             else               resume_id = "__pick__";
+        } else if (arg == "-api" || arg == "--api") {
+            api_setup = true;
         }
+    }
+
+    // ── -api: configure an external OpenAI-compatible API ────────────────────
+    if (api_setup) {
+        const auto& L = lang::S();
+        std::string line;
+
+        std::cout << "\n" << clr::dim << "  " << L.api_url_prompt << clr::reset << " ";
+        std::getline(std::cin, line);
+        if (!line.empty()) cfg.api_url = line;
+
+        std::cout << clr::dim << "  " << L.api_key_prompt << clr::reset << " ";
+        std::getline(std::cin, line);
+        if (!line.empty()) cfg.api_key = line;
+
+        std::cout << clr::dim << "  " << L.api_model_prompt << clr::reset << " ";
+        std::getline(std::cin, line);
+        if (!line.empty()) cfg.model = line;
+
+        cfg.save();
+        std::cout << clr::dim << "  " << L.api_saved << clr::reset << "\n\n";
     }
 
     // Fetch model info from server (best-effort — silent on failure)
     std::string model_extra;
     {
-        AIClient tmp(cfg.host, cfg.port, cfg.model);
+        AIClient tmp(cfg);
         if (auto info = tmp.fetch_model_info()) {
             if (!info->param_size.empty())   model_extra  = info->param_size;
             if (!info->quantization.empty()) model_extra += "  " + info->quantization;

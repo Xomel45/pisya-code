@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 add_executable(pisya
     src/main.cpp
@@ -29,6 +30,12 @@ target_include_directories(pisya PRIVATE
 
 target_link_libraries(pisya PRIVATE
     Threads::Threads
+    OpenSSL::SSL
+    OpenSSL::Crypto
+)
+
+target_compile_definitions(pisya PRIVATE
+    CPPHTTPLIB_OPENSSL_SUPPORT
 )
 
 target_compile_options(pisya PRIVATE

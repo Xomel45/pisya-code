@@ -1,4 +1,5 @@
 #pragma once
+#include "config.h"
 #include <optional>
 #include <string>
 #include <vector>
@@ -18,9 +19,12 @@ public:
         std::string quantization; // e.g. "Q4_K_M"
     };
 
-    AIClient(const std::string& host, int port, const std::string& model);
+    // Picks local (host:port, Ollama) or API mode (cfg.api_url + Bearer cfg.api_key)
+    // based on whether cfg.api_url is set.
+    explicit AIClient(const Config& cfg);
 
-    // Query /api/show for model details (Ollama). Returns nullopt on failure.
+    // Query /api/show for model details (Ollama only). Returns nullopt on failure
+    // or when running in API mode.
     std::optional<ModelInfo> fetch_model_info() const;
 
     // Returns full response JSON from the model
@@ -28,9 +32,13 @@ public:
                         const nlohmann::json& tools);
 
 private:
-    std::string host_;
-    int         port_;
+    bool        api_mode_;
+    std::string host_;        // display host (local: cfg.host, api: parsed from api_url)
+    int         port_;        // display port
     std::string model_;
+    std::string origin_;      // api mode: scheme://host[:port]
+    std::string path_prefix_; // api mode: e.g. "/v1" (no trailing slash)
+    std::string api_key_;
 
     nlohmann::json build_request(const std::vector<Message>& messages,
                                  const nlohmann::json& tools) const;

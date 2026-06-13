@@ -47,6 +47,8 @@ Config Config::load() {
             try { cfg.port = std::stoi(val); } catch (...) { /* keep default */ }
         }
         else if (key == "model")         cfg.model  = val;
+        else if (key == "api_url")       cfg.api_url = val;
+        else if (key == "api_key")       cfg.api_key = val;
         else if (key == "lang")          cfg.lang   = val;
         else if (key == "system_prompt") cfg.system_prompt = val;
     }
@@ -57,12 +59,22 @@ void Config::save() const {
     std::ofstream out(config_path());
     out << "host  = " << host  << "\n"
         << "port  = " << port  << "\n"
-        << "model = " << model << "\n"
-        << "lang  = " << lang  << "\n";
+        << "model = " << model << "\n";
+    if (!api_url.empty()) out << "api_url = " << api_url << "\n";
+    if (!api_key.empty()) out << "api_key = " << api_key << "\n";
+    out << "lang  = " << lang  << "\n";
 }
 
 void Config::print(const std::string& model_extra) const {
-    std::cout << std::format("  host  : {}:{}\n", host, port);
+    if (api_url.empty()) {
+        std::cout << std::format("  host  : {}:{}\n", host, port);
+    } else {
+        std::cout << std::format("  api   : {}\n", api_url);
+        if (!api_key.empty()) {
+            std::string tail = api_key.size() > 4 ? api_key.substr(api_key.size() - 4) : api_key;
+            std::cout << std::format("  key   : ****{}\n", tail);
+        }
+    }
     if (model_extra.empty())
         std::cout << std::format("  model : {}\n", model);
     else

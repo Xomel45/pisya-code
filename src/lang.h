@@ -62,6 +62,12 @@ struct Strings {
     const char* rc_stopped;
     const char* rc_not_running;
     const char* rc_failed;
+
+    // -api — external API setup
+    const char* api_url_prompt;
+    const char* api_key_prompt;
+    const char* api_model_prompt;
+    const char* api_saved;
 };
 
 void           set(Code c);

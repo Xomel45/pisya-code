@@ -2,10 +2,12 @@
 #include <string>
 
 struct Config {
-    std::string host  = "127.0.0.1";
-    int         port  = 11434;
-    std::string model = "qwen2.5-coder:14b";
-    std::string lang  = "en";
+    std::string host    = "127.0.0.1";
+    int         port    = 11434;
+    std::string model   = "qwen2.5-coder:14b";
+    std::string api_url; // non-empty → use this OpenAI-compatible API instead of host:port
+    std::string api_key; // Bearer token for api_url, if any
+    std::string lang    = "en";
     std::string system_prompt =
         "You are Pisya Code, a local AI coding assistant running on the user's machine. "
         "You have direct access to the filesystem and shell via tools.\n\n"

@@ -306,12 +306,12 @@ void Agent::print_tool_output(const std::string& name,
 // ── core ──────────────────────────────────────────────────────────────────────
 
 Agent::Agent(const Config& cfg)
-    : config_(cfg), client_(cfg.host, cfg.port, cfg.model) {
+    : config_(cfg), client_(cfg) {
     history_.push_back({"system", cfg.system_prompt, {}, {}});
 }
 
 Agent::Agent(const Config& cfg, std::vector<Message> history)
-    : config_(cfg), client_(cfg.host, cfg.port, cfg.model),
+    : config_(cfg), client_(cfg),
       history_(std::move(history)) {
     // Ensure system prompt is always first and up to date
     if (history_.empty() || history_[0].role != "system")
@@ -357,6 +357,8 @@ static std::string random_thinking() {
         "Manifesting",  "Conjuring",    "Mulling",      "Stewing",
         "Debugging",    "Procrastinating","Philosophizing","Overfitting",
         "Suffering",    "Caffeinating", "Tokenizing",   "Hallucinating harder",
+        "Doomscrolling","Overthinking", "Yapping",      "Spiraling",
+        "Rubber-ducking","Googling it", "Side-questing","Spinning up",
     };
     static constexpr std::string_view RU[] = {
         "Думаю",        "Соображаю",    "Варю",         "Колдую",
@@ -367,6 +369,9 @@ static std::string random_thinking() {
         "Манифестирую", "Торможу",      "Жую",          "Тупею",
         "Дебажу",       "Прокрастинирую","Философствую","Переобучаюсь",
         "Страдаю",      "Кофеинируюсь", "Токенизирую",  "Галлюцинирую ещё сильнее",
+        "Скроллю ленту","Передумываю",  "Болтаю",       "Впадаю в спираль",
+        "Объясняю уточке","Гуглю",      "Ухожу в побочный квест","Раскручиваюсь",
+        "Передёргиваю", "Закрываю",
     };
     static constexpr std::string_view DE[] = {
         "Denke",        "Grüble",       "Sinne",        "Plane",
@@ -377,6 +382,8 @@ static std::string random_thinking() {
         "Manifestiere", "Zaubers",      "Kaue",         "Schmorre",
         "Debugge",      "Prokrastiniere","Philosophiere","Überanpasse",
         "Leide",        "Koffeiniere",  "Tokenisiere",  "Halluziniere intensiver",
+        "Scrolle durch den Feed","Denke zu viel nach","Quatsche","Drehe durch",
+        "Erkläre es der Gummiente","Google es","Mache eine Nebenquest","Fahre hoch",
     };
     static std::mt19937 rng{std::random_device{}()};
     switch (lang::current()) {
@@ -409,6 +416,8 @@ static std::string random_verb() {
         "Mulled",     "Stewed",      "Roasted",     "Smoked",
         "Debugged",   "Suffered",    "Overcomplicated","Philosophized",
         "Procrastinated","Tokenized","Vibed",       "Caffeinated",
+        "Doomscrolled","Overthought","Yapped",      "Spiraled",
+        "Rubber-ducked","Googled it","Side-quested","Spun up",
     };
     static constexpr std::string_view RU[] = {
         "Сварил",       "Приготовил",  "Обжарил",     "Заварил",
@@ -421,6 +430,8 @@ static std::string random_verb() {
         "Пожевал",      "Потомил",     "Прожарил",    "Накурился",
         "Задебажил",    "Пострадал",   "Усложнил",    "Пофилософствовал",
         "Прокрастинировал","Токенизировал","Завибрировал","Кофеинировался",
+        "Проскроллил ленту","Передумал","Наболтал",   "Впал в спираль",
+        "Объяснил уточке","Погуглил",  "Сходил в побочный квест","Раскрутился",
     };
     static constexpr std::string_view DE[] = {
         "Gebrutzelt",   "Gekocht",     "Sautiert",    "Gebraut",
@@ -433,6 +444,8 @@ static std::string random_verb() {
         "Durchgekaut",  "Geschmort",   "Geröstet",    "Verraucht",
         "Debuggt",      "Gelitten",    "Überkompliziert","Philosophiert",
         "Prokrastiniert","Tokenisiert","Gevibt",      "Koffeiniert",
+        "Durch den Feed gescrollt","Zu viel nachgedacht","Gequatscht","Durchgedreht",
+        "Der Gummiente erklärt","Gegoogelt","Nebenquest gemacht","Hochgefahren",
     };
     static std::mt19937 rng{std::random_device{}()};
     switch (lang::current()) {
