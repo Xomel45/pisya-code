@@ -1,27 +1,26 @@
 #include "agent.h"
+#include "colors.h"
 #include "lang.h"
 #include "tools.h"
+#include "ui.h"
 #include <string_view>
 #include <atomic>
 #include <chrono>
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <random>
+#include <regex>
 #include <sstream>
 #include <thread>
 #include <vector>
 
-namespace clr {
-    constexpr auto reset  = "\033[0m";
-    constexpr auto bold   = "\033[1m";
-    constexpr auto dim    = "\033[2m";
-    constexpr auto white  = "\033[97m";
-    constexpr auto green  = "\033[32m";
-    constexpr auto red    = "\033[31m";
-}
-
 // ── helpers ───────────────────────────────────────────────────────────────────
+
+// Lightweight markdown styling for assistant commentary (defined below,
+// after split_lines).
+static std::string render_markdown(const std::string& text);
 
 // ── print functions ───────────────────────────────────────────────────────────
 
@@ -29,7 +28,7 @@ namespace clr {
 void Agent::print_commentary(const std::string& text) {
     std::cout << "\n"
               << clr::white << clr::bold << "● " << clr::reset
-              << text << "\n";
+              << render_markdown(text) << "\n";
 }
 
 // ● (red) — failure
@@ -52,6 +51,55 @@ static std::vector<std::string> split_lines(const std::string& s) {
     while (std::getline(ss, l)) lines.push_back(l);
     if (!s.empty() && s.back() == '\n') lines.push_back("");
     return lines;
+}
+
+// ── markdown renderer ────────────────────────────────────────────────────────
+
+// Apply inline styling: **bold** and `inline code`.
+static std::string render_inline(const std::string& line) {
+    static const std::regex bold_re("\\*\\*(.+?)\\*\\*");
+    static const std::regex code_re("`([^`]+?)`");
+
+    std::string out = std::regex_replace(line, bold_re,
+        std::string(clr::bold) + "$1" + clr::reset);
+    out = std::regex_replace(out, code_re,
+        std::string(clr::cyan) + "$1" + clr::reset);
+    return out;
+}
+
+// Render a small subset of markdown (bold, inline code, fenced code blocks,
+// ATX headers) using ANSI styling, for printing assistant commentary.
+static std::string render_markdown(const std::string& text) {
+    auto lines = split_lines(text);
+    std::ostringstream out;
+    bool in_code_block = false;
+
+    for (size_t i = 0; i < lines.size(); ++i) {
+        const std::string& line = lines[i];
+
+        if (line.starts_with("```")) {
+            in_code_block = !in_code_block;
+            continue; // drop the fence line itself
+        }
+
+        if (in_code_block) {
+            out << clr::dim << "  │ " << clr::reset << clr::cyan << line << clr::reset;
+        } else {
+            // ATX header: 1-6 '#' followed by a space (avoids `#include <...>`).
+            size_t hashes = 0;
+            while (hashes < line.size() && hashes < 6 && line[hashes] == '#') ++hashes;
+            if (hashes > 0 && hashes < line.size() && line[hashes] == ' ') {
+                std::string title = line.substr(hashes + 1);
+                out << clr::bold << title << clr::reset;
+            } else {
+                out << render_inline(line);
+            }
+        }
+
+        if (i + 1 < lines.size()) out << "\n";
+    }
+
+    return out.str();
 }
 
 static std::vector<std::string> read_file_lines(const std::string& path) {
@@ -424,6 +472,14 @@ static void run_spinner(std::atomic<bool>& done,
     std::cout << "\r\033[K" << std::flush;
 }
 
+// ── chat request result (filled in by a detachable worker thread) ──────────────
+
+struct ChatResult {
+    nlohmann::json     response;
+    std::exception_ptr error;
+    std::atomic<bool>  done{false};
+};
+
 // ── run ───────────────────────────────────────────────────────────────────────
 
 void Agent::run(const std::string& user_message) {
@@ -437,6 +493,8 @@ void Agent::run(const std::string& user_message) {
 
     for (int iter = 0; iter < MAX_ITERATIONS; ++iter) {
         nlohmann::json response;
+        bool interrupted = false;
+        ui::clear_interrupted();
         try {
             std::atomic<bool> done{false};
             auto think_start = std::chrono::steady_clock::now();
@@ -445,10 +503,43 @@ void Agent::run(const std::string& user_message) {
                 run_spinner(done, think_start, word, st);
             });
 
-            response = client_.chat(history_, tool_schemas);
+            // Run the request on a worker thread so Ctrl+C can abandon it
+            // without blocking on the (uncancellable) blocking HTTP call.
+            // Everything the worker touches is copied by value, so it stays
+            // valid even if we detach it and return early.
+            auto result = std::make_shared<ChatResult>();
+            std::thread worker([client = client_, history = history_,
+                                 tools = tool_schemas, result]() mutable {
+                try {
+                    result->response = client.chat(history, tools);
+                } catch (...) {
+                    result->error = std::current_exception();
+                }
+                result->done.store(true);
+            });
+
+            while (!result->done.load()) {
+                if (ui::interrupted()) { interrupted = true; break; }
+                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            }
             done = true;
+
+            if (interrupted) {
+                worker.detach();
+            } else {
+                worker.join();
+                if (result->error) std::rethrow_exception(result->error);
+                response = std::move(result->response);
+            }
         } catch (const std::exception& e) {
             print_failure(e.what());
+            return;
+        }
+
+        if (interrupted) {
+            ui::clear_interrupted();
+            std::cout << clr::dim << "\n  " << lang::S().agent_interrupted
+                      << "\n\n" << clr::reset;
             return;
         }
 

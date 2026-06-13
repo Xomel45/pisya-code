@@ -1,11 +1,28 @@
 #include "ui.h"
+#include "colors.h"
 #include "lang.h"
 #include <algorithm>
+#include <atomic>
+#include <csignal>
 #include <iostream>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
 #include <vector>
+
+// ── Ctrl+C interrupt flag ─────────────────────────────────────────────────────
+
+namespace {
+std::atomic<bool> g_interrupted{false};
+}
+
+void ui::install_signal_handlers() {
+    std::signal(SIGINT, [](int) { g_interrupted.store(true); });
+}
+
+bool ui::interrupted() { return g_interrupted.load(); }
+
+void ui::clear_interrupted() { g_interrupted.store(false); }
 
 // ── terminal raw mode ─────────────────────────────────────────────────────────
 
@@ -21,11 +38,14 @@ constexpr int KEY_ENTER = '\r';
 
 termios g_old_termios{};
 
+// Disables ECHO/ICANON for raw key reads. ISIG is also disabled so Ctrl+C
+// arrives as byte 0x03 (handled as "cancel") instead of killing the process —
+// SIGINT is intercepted globally via install_signal_handlers() instead.
 void set_raw(bool enable) {
     if (enable) {
         tcgetattr(STDIN_FILENO, &g_old_termios);
         termios raw = g_old_termios;
-        raw.c_lflag &= ~(ECHO | ICANON);
+        raw.c_lflag &= ~(ECHO | ICANON | ISIG);
         raw.c_cc[VMIN]  = 1;
         raw.c_cc[VTIME] = 0;
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
@@ -119,13 +139,13 @@ std::string hline(int w) {
     return s;
 }
 
-// ANSI helpers
-constexpr auto RST  = "\033[0m";
-constexpr auto DIM  = "\033[2m";
-constexpr auto BOLD = "\033[1m";
-constexpr auto GRN  = "\033[32m";
-constexpr auto YEL  = "\033[33m";
-constexpr auto WHT  = "\033[97m";
+// ANSI helpers (shared definitions, local short names for brevity)
+constexpr auto RST  = clr::reset;
+constexpr auto DIM  = clr::dim;
+constexpr auto BOLD = clr::bold;
+constexpr auto GRN  = clr::green;
+constexpr auto YEL  = clr::yellow;
+constexpr auto WHT  = clr::white;
 
 void draw_menu(const std::vector<std::string>& opts, int sel) {
     for (int i = 0; i < static_cast<int>(opts.size()); ++i) {
@@ -181,7 +201,7 @@ std::string ui::select(const std::string& prompt,
             std::cout << "  " << GRN << "❯" << RST << " "
                       << BOLD << opts[sel] << RST << "\n\n";
             return opts[sel];
-        } else if (k == '\033' || k == 'q') {
+        } else if (k == '\033' || k == 'q' || k == 3) { // Esc / q / Ctrl+C
             set_raw(false);
             std::cout << "\033[" << n << "A\033[J"
                       << "  " << DIM << lang::S().cancelled << RST << "\n\n";
@@ -251,7 +271,7 @@ ui::Perm ui::ask_permission(const std::string& cmd, const std::string& category,
 // ── autocomplete ──────────────────────────────────────────────────────────────
 
 static constexpr std::string_view g_commands[] = {
-    "/clear", "/config", "/session", "/language", "/exit", "/quit"
+    "/clear", "/config", "/session", "/language", "/help", "/exit", "/quit"
 };
 
 // Returns commands that start with `prefix` (prefix itself excluded).

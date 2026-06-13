@@ -20,6 +20,7 @@ struct Strings {
 
     // agent
     const char* history_cleared;
+    const char* agent_interrupted;
 
     // main — session picker
     const char* resumed;
@@ -30,6 +31,7 @@ struct Strings {
     const char* bye;
     const char* cmd_hint;
     const char* session_label;
+    const char* help_text;
 
     // feedback
     const char* feedback_prefix;   // "How is "

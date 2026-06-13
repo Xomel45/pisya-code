@@ -4,6 +4,14 @@
 
 namespace ui {
 
+// Install a SIGINT handler that sets an interrupt flag instead of killing
+// the process. Call once at startup.
+void install_signal_handlers();
+
+// True if Ctrl+C was pressed since the last clear_interrupted().
+bool interrupted();
+void clear_interrupted();
+
 // Arrow-key selection menu.
 // Always appends "Свой ответ..." as last option (unless already present).
 // Returns selected string, or typed custom string, or "" if cancelled.

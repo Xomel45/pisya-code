@@ -1,5 +1,6 @@
 #include "agent.h"
 #include "ai_client.h"
+#include "colors.h"
 #include "config.h"
 #include "lang.h"
 #include "session.h"
@@ -13,15 +14,6 @@
 #include <iostream>
 #include <string>
 #include <unistd.h>
-
-namespace clr {
-    constexpr auto reset  = "\033[0m";
-    constexpr auto bold   = "\033[1m";
-    constexpr auto orange = "\033[38;5;208m";
-    constexpr auto dim    = "\033[2m";
-    constexpr auto white  = "\033[97m";
-    constexpr auto green  = "\033[32m";
-}
 
 // ── git checkpoint ────────────────────────────────────────────────────────────
 
@@ -196,6 +188,8 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    ui::install_signal_handlers();
+
     Config cfg      = Config::load();
     lang::set(cfg.lang);
     std::string username = get_username();
@@ -282,6 +276,10 @@ int main(int argc, char* argv[]) {
         if (input == "/session") {
             std::cout << clr::dim << "  " << lang::S().session_label
                       << session.id << clr::reset << "\n\n";
+            continue;
+        }
+        if (input == "/help") {
+            std::cout << "\n" << clr::dim << lang::S().help_text << clr::reset << "\n\n";
             continue;
         }
         if (input == "/language") {

@@ -12,14 +12,24 @@ static constexpr Strings EN = {
     .perm_deny          = "Cancel",
     .perm_prompt        = "What do we do?",
     .history_cleared    = "[history cleared]",
+    .agent_interrupted  = "Interrupted — back to prompt.",
     .resumed            = "Resumed",
     .no_sessions        = "No saved sessions found. Starting a new one.",
     .resume_which       = "Resume which session?",
     .session_load_fail  = "Could not load session: ",
     .starting_fresh     = " \u2014 starting fresh.",
     .bye                = "Bye",
-    .cmd_hint           = "/clear \u2014 clear history | /config \u2014 show config | /language \u2014 change language | /exit \u2014 quit",
+    .cmd_hint           = "/clear \u2014 clear history | /config \u2014 show config | /language \u2014 change language | /help \u2014 help | /exit \u2014 quit",
     .session_label      = "Session: ",
+    .help_text          = "Available commands:\n"
+                           "  /clear     \u2014 clear conversation history\n"
+                           "  /config    \u2014 show current configuration\n"
+                           "  /session   \u2014 show current session ID\n"
+                           "  /language  \u2014 change language\n"
+                           "  /help      \u2014 show this help\n"
+                           "  /exit      \u2014 quit (/quit also works)\n"
+                           "\n"
+                           "Ctrl+C \u2014 cancel input, or interrupt the agent while it's thinking.",
     .feedback_prefix    = "How is ",
     .feedback_suffix    = " doing this session?",
     .feedback_optional  = "(optional)",
@@ -49,14 +59,24 @@ static constexpr Strings RU = {
     .perm_deny          = "\u041e\u0442\u043c\u0435\u043d\u0430",
     .perm_prompt        = "\u0427\u0442\u043e \u0434\u0435\u043b\u0430\u0435\u043c?",
     .history_cleared    = "[\u0438\u0441\u0442\u043e\u0440\u0438\u044f \u043e\u0447\u0438\u0449\u0435\u043d\u0430]",
+    .agent_interrupted  = "\u041f\u0440\u0435\u0440\u0432\u0430\u043d\u043e \u2014 \u0432\u043e\u0437\u0432\u0440\u0430\u0442 \u043a \u0432\u0432\u043e\u0434\u0443.",
     .resumed            = "\u0412\u043e\u0437\u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u043e",
     .no_sessions        = "\u0421\u043e\u0445\u0440\u0430\u043d\u0451\u043d\u043d\u044b\u0445 \u0441\u0435\u0441\u0441\u0438\u0439 \u043d\u0435\u0442. \u041d\u0430\u0447\u0438\u043d\u0430\u0435\u043c \u043d\u043e\u0432\u0443\u044e.",
     .resume_which       = "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c \u043a\u0430\u043a\u0443\u044e \u0441\u0435\u0441\u0441\u0438\u044e?",
     .session_load_fail  = "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0441\u0435\u0441\u0441\u0438\u044e: ",
     .starting_fresh     = " \u2014 \u043d\u0430\u0447\u0438\u043d\u0430\u0435\u043c \u0437\u0430\u043d\u043e\u0432\u043e.",
     .bye                = "\u041f\u043e\u043a\u0430",
-    .cmd_hint           = "/clear \u2014 \u043e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e | /config \u2014 \u043a\u043e\u043d\u0444\u0438\u0433 | /language \u2014 \u044f\u0437\u044b\u043a | /exit \u2014 \u0432\u044b\u0445\u043e\u0434",
+    .cmd_hint           = "/clear \u2014 \u043e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e | /config \u2014 \u043a\u043e\u043d\u0444\u0438\u0433 | /language \u2014 \u044f\u0437\u044b\u043a | /help \u2014 \u0441\u043f\u0440\u0430\u0432\u043a\u0430 | /exit \u2014 \u0432\u044b\u0445\u043e\u0434",
     .session_label      = "\u0421\u0435\u0441\u0441\u0438\u044f: ",
+    .help_text          = "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u044b:\n"
+                           "  /clear     \u2014 \u043e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e \u0434\u0438\u0430\u043b\u043e\u0433\u0430\n"
+                           "  /config    \u2014 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0442\u0435\u043a\u0443\u0449\u0443\u044e \u043a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044e\n"
+                           "  /session   \u2014 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c ID \u0442\u0435\u043a\u0443\u0449\u0435\u0439 \u0441\u0435\u0441\u0441\u0438\u0438\n"
+                           "  /language  \u2014 \u0441\u043c\u0435\u043d\u0438\u0442\u044c \u044f\u0437\u044b\u043a\n"
+                           "  /help      \u2014 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u044d\u0442\u0443 \u0441\u043f\u0440\u0430\u0432\u043a\u0443\n"
+                           "  /exit      \u2014 \u0432\u044b\u0445\u043e\u0434 (/quit \u0442\u043e\u0436\u0435 \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442)\n"
+                           "\n"
+                           "Ctrl+C \u2014 \u043e\u0442\u043c\u0435\u043d\u0430 \u0432\u0432\u043e\u0434\u0430 \u0438\u043b\u0438 \u043f\u0440\u0435\u0440\u044b\u0432\u0430\u043d\u0438\u0435 \u0430\u0433\u0435\u043d\u0442\u0430 \u0432\u043e \u0432\u0440\u0435\u043c\u044f \u0440\u0430\u0437\u043c\u044b\u0448\u043b\u0435\u043d\u0438\u044f.",
     .feedback_prefix    = "\u041a\u0430\u043a ",
     .feedback_suffix    = " \u0441\u043f\u0440\u0430\u0432\u043b\u044f\u0435\u0442\u0441\u044f \u0432 \u044d\u0442\u043e\u0439 \u0441\u0435\u0441\u0441\u0438\u0438?",
     .feedback_optional  = "(\u043d\u0435\u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e)",
@@ -86,14 +106,24 @@ static constexpr Strings DE = {
     .perm_deny          = "Abbrechen",
     .perm_prompt        = "Was tun wir?",
     .history_cleared    = "[Verlauf gel\u00f6scht]",
+    .agent_interrupted  = "Unterbrochen \u2014 zur\u00fcck zur Eingabe.",
     .resumed            = "Fortgesetzt",
     .no_sessions        = "Keine gespeicherten Sitzungen. Neue Sitzung wird gestartet.",
     .resume_which       = "Welche Sitzung fortsetzen?",
     .session_load_fail  = "Sitzung konnte nicht geladen werden: ",
     .starting_fresh     = " \u2014 starte neu.",
     .bye                = "Tsch\u00fcss",
-    .cmd_hint           = "/clear \u2014 Verlauf l\u00f6schen | /config \u2014 Konfiguration | /language \u2014 Sprache | /exit \u2014 beenden",
+    .cmd_hint           = "/clear \u2014 Verlauf l\u00f6schen | /config \u2014 Konfiguration | /language \u2014 Sprache | /help \u2014 Hilfe | /exit \u2014 beenden",
     .session_label      = "Sitzung: ",
+    .help_text          = "Verf\u00fcgbare Befehle:\n"
+                           "  /clear     \u2014 Verlauf l\u00f6schen\n"
+                           "  /config    \u2014 aktuelle Konfiguration anzeigen\n"
+                           "  /session   \u2014 aktuelle Sitzungs-ID anzeigen\n"
+                           "  /language  \u2014 Sprache \u00e4ndern\n"
+                           "  /help      \u2014 diese Hilfe anzeigen\n"
+                           "  /exit      \u2014 beenden (/quit funktioniert auch)\n"
+                           "\n"
+                           "Strg+C \u2014 Eingabe abbrechen oder den Agenten w\u00e4hrend des Nachdenkens unterbrechen.",
     .feedback_prefix    = "Wie macht sich ",
     .feedback_suffix    = " in dieser Sitzung?",
     .feedback_optional  = "(optional)",
