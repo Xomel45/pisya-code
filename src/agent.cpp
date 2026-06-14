@@ -1,6 +1,7 @@
 #include "agent.h"
 #include "colors.h"
 #include "lang.h"
+#include "rc.h"
 #include "tools.h"
 #include "ui.h"
 #include <string_view>
@@ -29,12 +30,14 @@ void Agent::print_commentary(const std::string& text) {
     std::cout << "\n"
               << clr::white << clr::bold << "● " << clr::reset
               << render_markdown(text) << "\n";
+    rc::push_event({{"type", "text"}, {"text", text}});
 }
 
 // ● (red) — failure
 void Agent::print_failure(const std::string& msg) {
     std::cout << clr::red << clr::bold << "● " << clr::reset
               << clr::red << msg << clr::reset << "\n";
+    rc::push_event({{"type", "error"}, {"text", msg}});
 }
 
 // dim line — informational tool (read, list, glob)
@@ -296,6 +299,8 @@ void Agent::print_tool_output(const std::string& name,
         else          std::cout << clr::dim << "● " << name << ": "
                                 << result << clr::reset << "\n";
     }
+
+    rc::push_event({{"type", "tool"}, {"name", name}, {"args", args}, {"result", result}});
 }
 
 // ── core ──────────────────────────────────────────────────────────────────────
@@ -484,6 +489,7 @@ struct ChatResult {
 
 void Agent::run(const std::string& user_message) {
     history_.push_back({"user", user_message, {}, {}});
+    rc::push_event({{"type", "user"}, {"text", user_message}});
 
     nlohmann::json tool_schemas = tools::get_schemas();
     auto run_start = std::chrono::steady_clock::now();
@@ -540,6 +546,7 @@ void Agent::run(const std::string& user_message) {
             ui::clear_interrupted();
             std::cout << clr::dim << "\n  " << lang::S().agent_interrupted
                       << "\n\n" << clr::reset;
+            rc::push_event({{"type", "status"}, {"text", lang::S().agent_interrupted}});
             return;
         }
 
@@ -583,16 +590,14 @@ void Agent::run(const std::string& user_message) {
         auto total_sec = std::chrono::duration<double>(
             std::chrono::steady_clock::now() - run_start).count();
 
-        std::cout << clr::dim << "  " << random_verb() << " for "
-                  << std::format("{:.1f}s", total_sec);
-
+        std::string status = std::format("{} for {:.1f}s", random_verb(), total_sec);
         if (total_prompt > 0 || total_completion > 0) {
-            std::cout << std::format(
-                "  ·  {} prompt + {} completion = {} tokens",
+            status += std::format("  ·  {} prompt + {} completion = {} tokens",
                 total_prompt, total_completion, total_prompt + total_completion);
         }
 
-        std::cout << clr::reset << "\n\n";
+        std::cout << clr::dim << "  " << status << clr::reset << "\n\n";
+        rc::push_event({{"type", "status"}, {"text", status}});
         return;
     }
 

@@ -3,6 +3,7 @@
 #include "colors.h"
 #include "config.h"
 #include "lang.h"
+#include "rc.h"
 #include "session.h"
 #include "ui.h"
 #include "../third_party/json.hpp"
@@ -280,6 +281,28 @@ int main(int argc, char* argv[]) {
         }
         if (input == "/help") {
             std::cout << "\n" << clr::dim << lang::S().help_text << clr::reset << "\n\n";
+            continue;
+        }
+        if (input == "/rc") {
+            const auto& L = lang::S();
+            std::string url = rc::start();
+            if (url.empty()) {
+                std::cout << "\n" << clr::dim << "  " << L.rc_failed << clr::reset << "\n\n";
+            } else {
+                std::cout << "\n" << clr::dim << "  " << L.rc_started << "  "
+                          << clr::reset << clr::cyan << url << clr::reset << "\n"
+                          << clr::dim << "  " << L.rc_security_note << clr::reset << "\n\n";
+            }
+            continue;
+        }
+        if (input == "/rc stop") {
+            const auto& L = lang::S();
+            if (rc::active()) {
+                rc::stop();
+                std::cout << "\n" << clr::dim << "  " << L.rc_stopped << clr::reset << "\n\n";
+            } else {
+                std::cout << "\n" << clr::dim << "  " << L.rc_not_running << clr::reset << "\n\n";
+            }
             continue;
         }
         if (input == "/language") {

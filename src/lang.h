@@ -55,6 +55,13 @@ struct Strings {
     const char* overwrite_prompt;       // "File already exists — overwrite?"
     const char* run_cmd;                // "Execute" (bash non-dangerous prefix)
     const char* outside_project_prompt; // "Outside project dir — allow this once?"
+
+    // /rc — remote control
+    const char* rc_started;
+    const char* rc_security_note;
+    const char* rc_stopped;
+    const char* rc_not_running;
+    const char* rc_failed;
 };
 
 void           set(Code c);

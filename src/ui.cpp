@@ -1,10 +1,12 @@
 #include "ui.h"
 #include "colors.h"
 #include "lang.h"
+#include "rc.h"
 #include <algorithm>
 #include <atomic>
 #include <csignal>
 #include <iostream>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
@@ -54,7 +56,12 @@ void set_raw(bool enable) {
     }
 }
 
+// Returns -1 if no key arrives within ~80ms (so callers can poll
+// rc::poll_input()/poll_choice() for remote-control input in between).
 int read_key() {
+    struct pollfd pfd{STDIN_FILENO, POLLIN, 0};
+    if (poll(&pfd, 1, 80) <= 0) return -1;
+
     char c = 0;
     if (read(STDIN_FILENO, &c, 1) <= 0) return -1;
     if (c != '\033') return static_cast<int>(static_cast<unsigned char>(c));
@@ -178,13 +185,23 @@ std::string ui::select(const std::string& prompt,
 
     set_raw(true);
 
+    int prompt_id = rc::push_prompt(prompt, opts);
+
     while (true) {
         int k = read_key();
+
+        if (k == -1) {
+            int choice = rc::poll_choice(prompt_id);
+            if (choice < 0) continue; // no key, no remote answer — keep polling
+            sel = choice;
+            k   = KEY_ENTER;
+        }
 
         if (k == KEY_UP)   sel = (sel - 1 + n) % n;
         else if (k == KEY_DOWN) sel = (sel + 1) % n;
         else if (k == KEY_ENTER || k == '\n') {
             set_raw(false);
+            rc::resolve_prompt(prompt_id);
 
             // Clear menu lines
             std::cout << "\033[" << n << "A\033[J";
@@ -203,6 +220,7 @@ std::string ui::select(const std::string& prompt,
             return opts[sel];
         } else if (k == '\033' || k == 'q' || k == 3) { // Esc / q / Ctrl+C
             set_raw(false);
+            rc::resolve_prompt(prompt_id);
             std::cout << "\033[" << n << "A\033[J"
                       << "  " << DIM << lang::S().cancelled << RST << "\n\n";
             return "";
@@ -271,7 +289,7 @@ ui::Perm ui::ask_permission(const std::string& cmd, const std::string& category,
 // ── autocomplete ──────────────────────────────────────────────────────────────
 
 static constexpr std::string_view g_commands[] = {
-    "/clear", "/config", "/session", "/language", "/help", "/exit", "/quit"
+    "/clear", "/config", "/session", "/language", "/help", "/rc", "/exit", "/quit"
 };
 
 // Returns commands that start with `prefix` (prefix itself excluded).
@@ -409,6 +427,17 @@ std::string ui::read_input() {
     while (true) {
         W = term_width();
         int k = read_key();
+
+        if (k == -1) {
+            std::string remote = rc::poll_input();
+            if (remote.empty()) continue; // no key, nothing from the phone — keep polling
+
+            set_raw(false);
+            clear_widget(prev_cursor);
+            std::cout << GRN << "❯" << RST << "  " << DIM << remote << RST << "\n\n";
+            g_history.push_back(remote);
+            return remote;
+        }
 
         if (k == KEY_ENTER || k == '\n') {
             // Accept inline hint on Enter if cursor is at end

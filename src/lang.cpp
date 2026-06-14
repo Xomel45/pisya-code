@@ -19,13 +19,14 @@ static constexpr Strings EN = {
     .session_load_fail  = "Could not load session: ",
     .starting_fresh     = " \u2014 starting fresh.",
     .bye                = "Bye",
-    .cmd_hint           = "/clear \u2014 clear history | /config \u2014 show config | /language \u2014 change language | /help \u2014 help | /exit \u2014 quit",
+    .cmd_hint           = "/clear \u2014 clear history | /config \u2014 show config | /language \u2014 change language | /help \u2014 help | /rc \u2014 remote control | /exit \u2014 quit",
     .session_label      = "Session: ",
     .help_text          = "Available commands:\n"
                            "  /clear     \u2014 clear conversation history\n"
                            "  /config    \u2014 show current configuration\n"
                            "  /session   \u2014 show current session ID\n"
                            "  /language  \u2014 change language\n"
+                           "  /rc        \u2014 remote control from a phone (LAN), /rc stop to stop\n"
                            "  /help      \u2014 show this help\n"
                            "  /exit      \u2014 quit (/quit also works)\n"
                            "\n"
@@ -47,6 +48,11 @@ static constexpr Strings EN = {
     .overwrite_prompt        = "File already exists — overwrite?",
     .run_cmd                 = "Execute",
     .outside_project_prompt  = "Path is outside the project directory — allow this once?",
+    .rc_started              = "Remote control started:",
+    .rc_security_note        = "Anyone with this link on your LAN can control this session — don't share it.",
+    .rc_stopped              = "Remote control stopped.",
+    .rc_not_running          = "Remote control isn't running.",
+    .rc_failed               = "Couldn't start the remote control server.",
 };
 
 static constexpr Strings RU = {
@@ -66,13 +72,14 @@ static constexpr Strings RU = {
     .session_load_fail  = "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0441\u0435\u0441\u0441\u0438\u044e: ",
     .starting_fresh     = " \u2014 \u043d\u0430\u0447\u0438\u043d\u0430\u0435\u043c \u0437\u0430\u043d\u043e\u0432\u043e.",
     .bye                = "\u041f\u043e\u043a\u0430",
-    .cmd_hint           = "/clear \u2014 \u043e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e | /config \u2014 \u043a\u043e\u043d\u0444\u0438\u0433 | /language \u2014 \u044f\u0437\u044b\u043a | /help \u2014 \u0441\u043f\u0440\u0430\u0432\u043a\u0430 | /exit \u2014 \u0432\u044b\u0445\u043e\u0434",
+    .cmd_hint           = "/clear \u2014 \u043e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e | /config \u2014 \u043a\u043e\u043d\u0444\u0438\u0433 | /language \u2014 \u044f\u0437\u044b\u043a | /help \u2014 \u0441\u043f\u0440\u0430\u0432\u043a\u0430 | /rc \u2014 \u0443\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 | /exit \u2014 \u0432\u044b\u0445\u043e\u0434",
     .session_label      = "\u0421\u0435\u0441\u0441\u0438\u044f: ",
     .help_text          = "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u044b:\n"
                            "  /clear     \u2014 \u043e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e \u0434\u0438\u0430\u043b\u043e\u0433\u0430\n"
                            "  /config    \u2014 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0442\u0435\u043a\u0443\u0449\u0443\u044e \u043a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044e\n"
                            "  /session   \u2014 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c ID \u0442\u0435\u043a\u0443\u0449\u0435\u0439 \u0441\u0435\u0441\u0441\u0438\u0438\n"
                            "  /language  \u2014 \u0441\u043c\u0435\u043d\u0438\u0442\u044c \u044f\u0437\u044b\u043a\n"
+                           "  /rc        \u2014 \u0443\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u0441 \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0430 (\u043f\u043e \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0439 \u0441\u0435\u0442\u0438), /rc stop \u2014 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c\n"
                            "  /help      \u2014 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u044d\u0442\u0443 \u0441\u043f\u0440\u0430\u0432\u043a\u0443\n"
                            "  /exit      \u2014 \u0432\u044b\u0445\u043e\u0434 (/quit \u0442\u043e\u0436\u0435 \u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442)\n"
                            "\n"
@@ -94,6 +101,11 @@ static constexpr Strings RU = {
     .overwrite_prompt        = "\u0424\u0430\u0439\u043b \u0443\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442 \u2014 \u043f\u0435\u0440\u0435\u0437\u0430\u043f\u0438\u0441\u0430\u0442\u044c?",
     .run_cmd                 = "\u0412\u044b\u043f\u043e\u043b\u043d\u0438\u0442\u044c",
     .outside_project_prompt  = "\u041f\u0443\u0442\u044c \u0437\u0430 \u043f\u0440\u0435\u0434\u0435\u043b\u0430\u043c\u0438 \u043f\u0440\u043e\u0435\u043a\u0442\u0430 \u2014 \u0440\u0430\u0437\u0440\u0435\u0448\u0438\u0442\u044c \u043e\u0434\u0438\u043d \u0440\u0430\u0437?",
+    .rc_started              = "\u0423\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u0437\u0430\u0440\u0443\u0436\u0435\u043d\u043e:",
+    .rc_security_note        = "\u041b\u044e\u0431\u043e\u0439, \u0443 \u043a\u043e\u0433\u043e \u0435\u0441\u0442\u044c \u044d\u0442\u0430 \u0441\u0441\u044b\u043b\u043a\u0430 \u0432 \u0442\u0432\u043e\u0435\u0439 \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0439 \u0441\u0435\u0442\u0438, \u0441\u043c\u043e\u0436\u0435\u0442 \u0443\u043f\u0440\u0430\u0432\u043b\u044f\u0442\u044c \u044d\u0442\u043e\u0439 \u0441\u0435\u0441\u0441\u0438\u0435\u0439 \u2014 \u043d\u0435 \u0434\u0435\u043b\u0438\u0441\u044c \u0435\u0439.",
+    .rc_stopped              = "\u0423\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043e.",
+    .rc_not_running          = "\u0423\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u043d\u0435 \u0437\u0430\u043f\u0443\u0449\u0435\u043d\u043e.",
+    .rc_failed               = "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c \u0441\u0435\u0440\u0432\u0435\u0440 \u0443\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0433\u043e \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u044f.",
 };
 
 static constexpr Strings DE = {
@@ -113,13 +125,14 @@ static constexpr Strings DE = {
     .session_load_fail  = "Sitzung konnte nicht geladen werden: ",
     .starting_fresh     = " \u2014 starte neu.",
     .bye                = "Tsch\u00fcss",
-    .cmd_hint           = "/clear \u2014 Verlauf l\u00f6schen | /config \u2014 Konfiguration | /language \u2014 Sprache | /help \u2014 Hilfe | /exit \u2014 beenden",
+    .cmd_hint           = "/clear \u2014 Verlauf l\u00f6schen | /config \u2014 Konfiguration | /language \u2014 Sprache | /help \u2014 Hilfe | /rc \u2014 Fernsteuerung | /exit \u2014 beenden",
     .session_label      = "Sitzung: ",
     .help_text          = "Verf\u00fcgbare Befehle:\n"
                            "  /clear     \u2014 Verlauf l\u00f6schen\n"
                            "  /config    \u2014 aktuelle Konfiguration anzeigen\n"
                            "  /session   \u2014 aktuelle Sitzungs-ID anzeigen\n"
                            "  /language  \u2014 Sprache \u00e4ndern\n"
+                           "  /rc        \u2014 Fernsteuerung vom Smartphone (LAN), /rc stop zum Beenden\n"
                            "  /help      \u2014 diese Hilfe anzeigen\n"
                            "  /exit      \u2014 beenden (/quit funktioniert auch)\n"
                            "\n"
@@ -141,6 +154,11 @@ static constexpr Strings DE = {
     .overwrite_prompt        = "Datei existiert bereits \u2014 \u00fcberschreiben?",
     .run_cmd                 = "Ausf\u00fchren",
     .outside_project_prompt  = "Pfad au\u00dferhalb des Projektverzeichnisses \u2014 einmalig erlauben?",
+    .rc_started              = "Fernsteuerung gestartet:",
+    .rc_security_note        = "Jeder mit diesem Link in deinem LAN kann diese Sitzung steuern \u2014 nicht teilen.",
+    .rc_stopped              = "Fernsteuerung gestoppt.",
+    .rc_not_running          = "Fernsteuerung l\u00e4uft nicht.",
+    .rc_failed               = "Der Fernsteuerungsserver konnte nicht gestartet werden.",
 };
 
 static Code g_code = Code::En;
