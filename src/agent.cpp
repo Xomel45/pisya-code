@@ -16,6 +16,7 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+#include <sys/utsname.h>
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -303,11 +304,74 @@ void Agent::print_tool_output(const std::string& name,
     rc::push_event({{"type", "tool"}, {"name", name}, {"args", args}, {"result", result}});
 }
 
+// ── environment info (OS, distro, package manager) ────────────────────────────
+
+static std::string detect_os_info() {
+    struct utsname uts{};
+    uname(&uts);
+
+    std::string pretty_name, id, id_like;
+    std::ifstream os_release("/etc/os-release");
+    if (os_release) {
+        auto unquote = [](std::string s) {
+            if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
+                s = s.substr(1, s.size() - 2);
+            return s;
+        };
+        std::string line;
+        while (std::getline(os_release, line)) {
+            if      (line.starts_with("PRETTY_NAME=")) pretty_name = unquote(line.substr(12));
+            else if (line.starts_with("ID="))          id          = unquote(line.substr(3));
+            else if (line.starts_with("ID_LIKE="))     id_like     = unquote(line.substr(8));
+        }
+    }
+
+    static constexpr std::pair<std::string_view, std::string_view> PKG_MGRS[] = {
+        {"arch", "pacman"}, {"manjaro", "pacman"},
+        {"debian", "apt"},  {"ubuntu", "apt"},   {"mint", "apt"},
+        {"fedora", "dnf"},  {"rhel", "dnf"},     {"centos", "dnf"},
+        {"suse", "zypper"}, {"alpine", "apk"},   {"void", "xbps"},
+        {"gentoo", "emerge"}, {"nixos", "nix"},
+    };
+
+    std::string pkg_mgr;
+    for (const auto& [key, mgr] : PKG_MGRS) {
+        if (id.find(key) != std::string::npos || id_like.find(key) != std::string::npos) {
+            pkg_mgr = mgr;
+            break;
+        }
+    }
+
+    std::string sysname = uts.sysname;
+    std::string distro  = sysname == "Darwin" ? "macOS"
+                         : !pretty_name.empty() ? pretty_name
+                         : !id.empty()          ? id
+                         : sysname;
+    if (pkg_mgr.empty() && distro == "macOS") pkg_mgr = "brew";
+
+    std::string info = std::format("\n\n## Environment\nOS: {} ({} {}, {})",
+                                    distro, sysname, uts.release, uts.machine);
+    if (!pkg_mgr.empty())
+        info += std::format("\nLikely package manager: {}", pkg_mgr);
+    if (const char* shell = getenv("SHELL"); shell && *shell)
+        info += std::format("\nShell: {}", shell);
+    info += "\nUse this to pick commands that are likely to exist on this system "
+            "(e.g. the right package manager for installs). If unsure, check with "
+            "`which`/`command -v` rather than assuming.";
+
+    return info;
+}
+
+static const std::string& os_info() {
+    static std::string info = detect_os_info();
+    return info;
+}
+
 // ── core ──────────────────────────────────────────────────────────────────────
 
 Agent::Agent(const Config& cfg)
     : config_(cfg), client_(cfg) {
-    history_.push_back({"system", cfg.system_prompt, {}, {}});
+    history_.push_back({"system", cfg.system_prompt + os_info(), {}, {}});
 }
 
 Agent::Agent(const Config& cfg, std::vector<Message> history)
@@ -315,14 +379,14 @@ Agent::Agent(const Config& cfg, std::vector<Message> history)
       history_(std::move(history)) {
     // Ensure system prompt is always first and up to date
     if (history_.empty() || history_[0].role != "system")
-        history_.insert(history_.begin(), {"system", cfg.system_prompt, {}, {}});
+        history_.insert(history_.begin(), {"system", cfg.system_prompt + os_info(), {}, {}});
     else
-        history_[0].content = cfg.system_prompt;
+        history_[0].content = cfg.system_prompt + os_info();
 }
 
 void Agent::clear_history() {
     history_.clear();
-    history_.push_back({"system", config_.system_prompt, {}, {}});
+    history_.push_back({"system", config_.system_prompt + os_info(), {}, {}});
     std::cout << clr::dim << "  " << lang::S().history_cleared << "\n" << clr::reset;
 }
 

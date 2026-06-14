@@ -23,6 +23,7 @@ A local AI coding assistant written in C++23. Connects to any OpenAI-compatible 
 - **Multilingual UI** — English, Русский, Deutsch (`/language` to switch)
 - **Feedback timer** — asks how the model is doing after 6 hours, then every 48 hours
 - **Permissions** — global `~/.pisya/permissions.json` lets you extend allowed/denied commands across all projects
+- **`.pisyaignore`** — `.gitignore`-style patterns to hide files/directories from the model entirely
 
 ## Security
 
@@ -40,6 +41,26 @@ Pisya Code has a two-layer security model:
 - `allowed` — commands that run without confirmation (e.g. `git`, `make`)
 - `denied` — commands that are always blocked
 - Constitution rules always win regardless of what's in this file
+
+## `.pisyaignore`
+
+Drop a `.pisyaignore` file in your project root to keep specific files out of
+the model's reach — same syntax as `.gitignore` (comments with `#`, `*`/`**`
+wildcards, directory patterns with a trailing `/`, negation with `!`).
+
+```gitignore
+# never let the model see these
+*.env
+secrets/
+*.pem
+!secrets/README.md
+```
+
+Matching files/directories are excluded from `read_file`, `list_dir`,
+`glob_files` and `search_files` — the model won't see them in listings and
+can't read their contents. As with `.gitignore`, this is a hygiene
+boundary, not a hard sandbox: the `bash` tool can still run commands like
+`cat` on an ignored file if you approve them.
 
 ## Requirements
 

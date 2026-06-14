@@ -165,9 +165,84 @@ static std::string path_guard(const std::string& raw) {
     return "";
 }
 
+// ── .pisyaignore ──────────────────────────────────────────────────────────────
+// Gitignore-style patterns (project root) for files that should never be
+// read by the model or exposed via list_dir/glob_files/search_files.
+
+struct IgnoreRule {
+    std::regex re;
+    bool       negate;
+};
+
+// Translates one .gitignore-style pattern into a regex matching paths
+// relative to the project root (forward-slash separated, no leading '/').
+static IgnoreRule compile_ignore_pattern(std::string pat, bool negate) {
+    bool anchored = !pat.empty() && pat.front() == '/';
+    if (anchored) pat.erase(0, 1);
+    if (!pat.empty() && pat.back() == '/') pat.pop_back(); // dir-only marker
+
+    std::string re_str = anchored ? "^" : "^(?:.*/)?";
+    for (size_t i = 0; i < pat.size(); ++i) {
+        char c = pat[i];
+        if (c == '*' && i + 1 < pat.size() && pat[i+1] == '*') {
+            ++i;
+            if (i + 1 < pat.size() && pat[i+1] == '/') { re_str += "(?:.*/)?"; ++i; }
+            else                                        re_str += ".*";
+        } else if (c == '*') {
+            re_str += "[^/]*";
+        } else if (c == '?') {
+            re_str += "[^/]";
+        } else if (std::string(".^$+(){}|\\[]").find(c) != std::string::npos) {
+            re_str += '\\';
+            re_str += c;
+        } else {
+            re_str += c;
+        }
+    }
+    re_str += "(?:/.*)?$";
+    return {std::regex(re_str), negate};
+}
+
+static std::vector<IgnoreRule> load_ignore_rules() {
+    std::vector<IgnoreRule> rules;
+    std::ifstream f(project_root() / ".pisyaignore");
+    if (!f) return rules;
+
+    std::string line;
+    while (std::getline(f, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line[0] == '#') continue;
+
+        bool negate = false;
+        if (line[0] == '!') { negate = true; line.erase(0, 1); }
+        if (line.empty()) continue;
+
+        try { rules.push_back(compile_ignore_pattern(line, negate)); }
+        catch (...) {}
+    }
+    return rules;
+}
+
+// True if `p` matches a .pisyaignore rule (last matching rule wins, like .gitignore).
+static bool is_pisya_ignored(const fs::path& p, const std::vector<IgnoreRule>& rules) {
+    if (rules.empty()) return false;
+
+    fs::path rel = fs::weakly_canonical(p).lexically_relative(project_root());
+    if (rel.empty() || rel.string().starts_with("..")) return false;
+
+    std::string rp = rel.generic_string();
+    bool ignored = false;
+    for (const auto& r : rules)
+        if (std::regex_match(rp, r.re)) ignored = !r.negate;
+    return ignored;
+}
+
 // ── read_file ─────────────────────────────────────────────────────────────────
 std::string tools::read_file(const std::string& path) {
     if (auto err = path_guard(path); !err.empty()) return err;
+
+    if (is_pisya_ignored(path, load_ignore_rules()))
+        return std::format("Error: '{}' is excluded by .pisyaignore", path);
 
     if (!fs::exists(path))
         return std::format("Error: file '{}' not found", path);
@@ -277,8 +352,10 @@ std::string tools::list_dir(const std::string& path) {
     if (!fs::exists(path))
         return std::format("Error: path '{}' not found", path);
 
+    auto rules = load_ignore_rules();
     std::string result;
     for (const auto& entry : fs::directory_iterator(path)) {
+        if (is_pisya_ignored(entry.path(), rules)) continue;
         std::string name = entry.path().filename().string();
         if (entry.is_directory()) name += "/";
         result += name + "\n";
@@ -291,6 +368,7 @@ std::string tools::glob_files(const std::string& pattern, const std::string& dir
     if (pattern.empty()) return "Error: pattern is empty";
     if (auto err = path_guard(dir); !err.empty()) return err;
 
+    auto rules = load_ignore_rules();
     std::string result;
     try {
         for (auto it = fs::recursive_directory_iterator(
@@ -298,10 +376,12 @@ std::string tools::glob_files(const std::string& pattern, const std::string& dir
              it != fs::recursive_directory_iterator(); ++it) {
             const auto& entry = *it;
             if (entry.is_directory()) {
-                if (is_ignored_dir(entry.path().filename().string()))
+                if (is_ignored_dir(entry.path().filename().string()) ||
+                    is_pisya_ignored(entry.path(), rules))
                     it.disable_recursion_pending();
                 continue;
             }
+            if (is_pisya_ignored(entry.path(), rules)) continue;
             std::string p = entry.path().string();
             if (naive_glob_match(pattern, p)) result += p + "\n";
         }
@@ -326,17 +406,20 @@ std::string tools::search_files(const std::string& pattern, const std::string& d
     int matches = 0;
     std::string result;
 
+    auto rules = load_ignore_rules();
     try {
         for (auto it = fs::recursive_directory_iterator(
                  dir, fs::directory_options::skip_permission_denied);
              it != fs::recursive_directory_iterator(); ++it) {
             const auto& entry = *it;
             if (entry.is_directory()) {
-                if (is_ignored_dir(entry.path().filename().string()))
+                if (is_ignored_dir(entry.path().filename().string()) ||
+                    is_pisya_ignored(entry.path(), rules))
                     it.disable_recursion_pending();
                 continue;
             }
             if (!entry.is_regular_file()) continue;
+            if (is_pisya_ignored(entry.path(), rules)) continue;
 
             std::string p = entry.path().string();
             if (!file_glob.empty() && !naive_glob_match(file_glob, p)) continue;
