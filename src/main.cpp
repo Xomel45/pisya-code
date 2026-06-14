@@ -18,7 +18,16 @@
 
 // ── git checkpoint ────────────────────────────────────────────────────────────
 
+// Presence of this file in the working directory opts out of pisya's
+// auto-commit checkpoints — used so running pisya inside its own dev repo
+// doesn't pollute the project history with session commits.
+static bool checkpoint_disabled() {
+    return std::filesystem::exists(".pisya-no-checkpoint");
+}
+
 static void git_init_if_needed() {
+    if (checkpoint_disabled()) return;
+
     // Already inside a git repo — do nothing
     if (std::system("git rev-parse --git-dir >/dev/null 2>&1") == 0) return;
 
@@ -41,6 +50,8 @@ static std::string sanitize_for_git(const std::string& msg) {
 }
 
 static void git_checkpoint(const std::string& user_msg) {
+    if (checkpoint_disabled()) return;
+
     std::string subject = sanitize_for_git(user_msg);
     std::string cmd = "git add -A && git commit -q -m \"pisya: " + subject + "\" 2>/dev/null";
     std::system(cmd.c_str());

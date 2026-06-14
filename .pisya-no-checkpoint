@@ -1,0 +1,6 @@
+# Presence of this file disables pisya's git-checkpoint auto-commits
+# (see src/main.cpp: checkpoint_disabled()).
+#
+# This is the pisya-code dev repo itself — running ./build/pisya here for
+# testing should not pollute the project's commit history with session
+# checkpoints. Don't remove this file.
