@@ -1,22 +1,27 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════════════════════
-# deploy.sh — упаковка и развёртывание артефактов сборки Naleystogramm
+# deploy.sh — упаковка и развёртывание артефактов Pisya Code
 # ══════════════════════════════════════════════════════════════════════════════
 #
 # Использование:
-#   ./deploy.sh beta                  — сырой ELF → builds/beta/
-#   ./deploy.sh release               — все платформы → builds/releases/VERSION-*/
-#   ./deploy.sh release linux         — AppImage → builds/releases/VERSION-linux/
-#   ./deploy.sh release win           — .exe+DLL → builds/releases/VERSION-windows/
+#   ./deploy.sh beta                  — сырой бинарь → builds/beta/pisya
+#   ./deploy.sh release                — .tar.gz (универсальный) → builds/releases/
+#   ./deploy.sh release tar            — то же самое явно
+#   ./deploy.sh release pkg/arch       — .pkg.tar.zst (Arch/pacman)
+#   ./deploy.sh release deb/debian     — .deb (Debian/Ubuntu/Mint)
+#   ./deploy.sh release rpm/rh         — .rpm (Fedora/RHEL/openSUSE)
+#   ./deploy.sh release my             — авто: пакет под текущий дистрибутив
+#   ./deploy.sh release all            — tar.gz + pkg + deb + rpm (что доступно)
 #
 # Опции:
-#   --build     Пересобрать проект перед деплоем (через CMake)
+#   --build     Пересобрать проект перед деплоем (Release, CMake)
 #   --clean     Удалить целевую директорию перед копированием
 #
 # Примеры:
-#   ./deploy.sh beta --build              Собрать и задеплоить beta
-#   ./deploy.sh release linux --clean     AppImage поверх очищенной директории
-#   ./deploy.sh release --build --clean   Полный цикл: сборка + релиз всех платформ
+#   ./deploy.sh beta --build              Собрать и задеплоить сырой бинарь
+#   ./deploy.sh release --build           Собрать и упаковать .tar.gz
+#   ./deploy.sh release my --build        Собрать и упаковать под свой дистрибутив
+#   ./deploy.sh release all --build --clean
 # ══════════════════════════════════════════════════════════════════════════════
 
 set -euo pipefail
@@ -36,17 +41,19 @@ rule()   { printf "${CYAN}%.0s─${NC}" {1..60}; echo; }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# ── Константы путей ───────────────────────────────────────────────────────────
-APP_NAME="naleystogramm"
-BUILD_LINUX="build-linux"                          # выход linux cmake
-BUILD_WIN="build-win"                              # выход windows cmake (cross)
-BUILDS_DIR="builds"                                # корень артефактов
-WIN_MINGW_ROOT="/usr/x86_64-w64-mingw32"           # корень mingw-w64 тулчейна
-WIN_QT_DLLS="${WIN_MINGW_ROOT}/bin"                # Qt6*.dll (напр. Qt6Core.dll)
-WIN_QT_PLUGINS="${WIN_MINGW_ROOT}/lib/qt6/plugins" # плагины (platforms/, sqldrivers/ ...)
+# ── Константы ─────────────────────────────────────────────────────────────────
+APP_NAME="pisya"
+PKG_DESC="Local AI coding assistant (C++23, OpenAI-compatible API)"
+PKG_URL="https://github.com/Xomel45/pisya-code"
+PKG_LICENSE="MPL-2.0"
+MAINTAINER="Xomel45 <xom.xom.zip@gmail.com>"
 
-# ── Чтение версии из CMakeLists.txt ──────────────────────────────────────────
-# Берём из строки вида: project(naleystogramm VERSION 0.3.2 LANGUAGES CXX RC)
+BUILD_DIR="build-release"   # отдельная от дев-сборки (build/) директория
+BUILDS_DIR="builds"         # корень артефактов (не коммитится)
+ARCH="$(uname -m)"          # x86_64 / aarch64 / ...
+
+# ── Версия из CMakeLists.txt ─────────────────────────────────────────────────
+# Берём из строки вида: project(pisya-code VERSION 0.1.0 LANGUAGES CXX)
 get_version() {
     local v
     v=$(sed -n 's/^project([^ ]* VERSION \([0-9][0-9.]*\).*/\1/p' CMakeLists.txt | head -1)
@@ -56,7 +63,7 @@ VERSION=$(get_version)
 
 # ── Парсинг аргументов ────────────────────────────────────────────────────────
 MODE="${1:-help}"
-PLATFORM="${2:-both}"
+PLATFORM="${2:-tar}"
 DO_BUILD=false
 DO_CLEAN=false
 
@@ -70,17 +77,26 @@ done
 # Размер файла в человекочитаемом виде
 file_size() { du -h "$1" 2>/dev/null | cut -f1 || echo "?"; }
 
-# Получаем короткий git-хеш коммита
+# Короткий git-хеш текущего коммита
 git_hash() { git rev-parse --short HEAD 2>/dev/null || echo "unknown"; }
+
+# debian-имя архитектуры (amd64/arm64) из uname -m (x86_64/aarch64)
+deb_arch() {
+    case "$ARCH" in
+        x86_64)  echo "amd64" ;;
+        aarch64) echo "arm64" ;;
+        *)       echo "$ARCH" ;;
+    esac
+}
 
 # Сохраняем метаданные сборки рядом с артефактом
 write_build_info() {
     local dir="$1"
-    printf "version=%s\nbuilt=%s\ncommit=%s\nplatform=%s\n" \
+    printf "version=%s\nbuilt=%s\ncommit=%s\narch=%s\n" \
         "$VERSION" \
         "$(date '+%Y-%m-%d %H:%M:%S')" \
         "$(git_hash)" \
-        "${2:-linux}" \
+        "$ARCH" \
         > "$dir/build-info.txt"
 }
 
@@ -94,24 +110,9 @@ detect_pkg_format() {
     fi
     local combined="${id} ${id_like}"
 
-    # ── Arch и производные ──────────────────────────────────────────────────
-    local arch_re='arch|manjaro|endeavouros|garuda|artix|parabola|cachyos|blackarch'
-    arch_re+='|archlabs|archcraft|arcolinux|archman|archstrike|bluestar|crystal'
-    arch_re+='|ctlos|hyperbola|kaos|librewish|obarun|rebornos|anarchy|axyl|snal'
-    arch_re+='|steamos'
-
-    # ── Debian / Ubuntu и производные ───────────────────────────────────────
-    local deb_re='debian|ubuntu|linuxmint|raspbian|raspios|kali|elementary|zorin'
-    deb_re+='|popos|pop_os|backbox|parrot|tails|deepin|mx|antix|devuan|pureos'
-    deb_re+='|sparky|lmde|bunsenlabs|crunchbang|bodhi|mobian|armbian|siduction'
-    deb_re+='|solydxk|trisquel|netrunner|nitrux|regolith|q4os|peppermint|lite'
-    deb_re+='|neon|kubuntu|lubuntu|xubuntu|endless|astra|knoppix|wubuntu'
-
-    # ── RPM (Fedora / RHEL / SUSE / Mageia) и производные ──────────────────
-    local rpm_re='fedora|rhel|centos|rocky|almalinux|opensuse|suse|oracle|scientific'
-    rpm_re+='|springdale|eurolinux|clearos|cloudlinux|mageia|pclinuxos|openmandriva'
-    rpm_re+='|rosa|nobara|ultramarine|bazzite|aurora|bluefin|coreos|qubes|asahi'
-    rpm_re+='|turbolinux|vine|alt|mandriva|centos-stream|circle'
+    local arch_re='arch|manjaro|endeavouros|garuda|artix|cachyos|blackarch'
+    local deb_re='debian|ubuntu|linuxmint|raspbian|pop|kali|elementary|zorin|mx|devuan'
+    local rpm_re='fedora|rhel|centos|rocky|almalinux|opensuse|suse|oracle|mageia|nobara'
 
     if   echo "$combined" | grep -qiE "$arch_re"; then echo "pkg"
     elif echo "$combined" | grep -qiE "$deb_re";  then echo "deb"
@@ -120,62 +121,14 @@ detect_pkg_format() {
     fi
 }
 
-# Упаковываем файл или директорию в ZIP с максимальным сжатием (-9).
-# make_zip <src> <out.zip>
-# Если src — директория, упаковывает её содержимое (пути относительны родителю).
-# Если src — файл, упаковывает сам файл.
-make_zip() {
-    local src="$1" zip_out="$2"
-    local abs_zip
-    abs_zip="$(realpath -m "$zip_out")"
-    log "ZIP: $(basename "$abs_zip")..."
-    rm -f "$abs_zip"
-    if [[ -d "$src" ]]; then
-        (cd "$(dirname "$src")" && zip -9 -r "$abs_zip" "$(basename "$src")")
-    else
-        (cd "$(dirname "$src")" && zip -9 "$abs_zip" "$(basename "$src")")
-    fi
-    ok "  + $(basename "$abs_zip")  ($(file_size "$abs_zip"))"
-}
-
-# Упаковываем СОДЕРЖИМОЕ директории в ZIP без обёрточной папки (-9).
-# make_zip_flat <src_dir> <out.zip>
-# Нужно для payload.zip инсталлера: extract_zip_from_memory распаковывает
-# пути из архива как есть в install_path, а ярлыки/firewall/registry/autostart
-# в install.c ожидают naleystogramm.exe сразу в install_path, без вложенной
-# папки вида "0.8.2-windows/".
-make_zip_flat() {
-    local src_dir="$1" zip_out="$2"
-    local abs_zip
-    abs_zip="$(realpath -m "$zip_out")"
-    log "ZIP (flat): $(basename "$abs_zip")..."
-    rm -f "$abs_zip"
-    (cd "$src_dir" && zip -9 -r "$abs_zip" .)
-    ok "  + $(basename "$abs_zip")  ($(file_size "$abs_zip"))"
-}
-
-# Копируем файл с логированием; при отсутствии — warn, не fail
-copy_file() {
-    local src="$1" dst="$2" label="$3"
-    if [[ -f "$src" ]]; then
-        cp "$src" "$dst"
-        ok "  + ${label:-$(basename "$src")}"
-        return 0
-    else
-        warn "  ? Не найден: ${label:-$(basename "$src")}"
-        return 1
-    fi
-}
-
-# Создаём структуру builds/ если её нет (не добавлять в git!)
+# Создаём builds/ если её нет (не добавлять в git!)
 ensure_builds_tree() {
     mkdir -p "$BUILDS_DIR/beta"
     mkdir -p "$BUILDS_DIR/releases"
 }
 
-# L-3: безопасное удаление — только внутри BUILDS_DIR.
-# Защищает от path-traversal через VERSION (например, "../../../etc").
-# Использует realpath -m (без требования существования пути).
+# Безопасное удаление — только внутри BUILDS_DIR.
+# Защищает от path-traversal (например, через странную VERSION).
 safe_clean() {
     local target="$1"
     local abs_builds abs_target
@@ -190,307 +143,87 @@ safe_clean() {
     rm -rf "${target:?}"
 }
 
-# ── Сборка (опциональная) ─────────────────────────────────────────────────────
+# ── Сборка ────────────────────────────────────────────────────────────────────
 
-build_linux() {
-    header "Сборка Linux (Release)"
-    cmake -B "$BUILD_LINUX" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH=/usr/lib/qt6
-    cmake --build "$BUILD_LINUX" --parallel "$(( $(nproc) - 2 ))"
-    ok "Linux бинарник собран: $BUILD_LINUX/$APP_NAME"
+build_pisya() {
+    header "Сборка Release"
+    cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -Wno-dev -DCMAKE_EXPORT_COMPILE_COMMANDS=OFF
+    cmake --build "$BUILD_DIR" -j"$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
+    ok "Бинарь собран: $BUILD_DIR/$APP_NAME"
 }
 
-build_windows() {
-    header "Сборка Windows (cross-compile MinGW)"
-    cmake -B "$BUILD_WIN" \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw64.cmake
-    cmake --build "$BUILD_WIN" --parallel "$(( $(nproc) - 2 ))"
-    ok "Windows .exe собран: $BUILD_WIN/$APP_NAME.exe"
+ensure_binary() {
+    if $DO_BUILD || [[ ! -f "$BUILD_DIR/$APP_NAME" ]]; then
+        build_pisya
+    fi
 }
 
 # ── РЕЖИМ: Beta ───────────────────────────────────────────────────────────────
-# Назначение: быстрая проверка, итерации.
-# Артефакт:   сырой ELF без AppImage-упаковки (нет зависимостей Qt рядом!).
-# Путь:       builds/beta/naleystogramm
+# Сырой бинарь, без упаковки — для быстрой проверки на этой же машине.
 deploy_beta() {
     header "Beta Deploy → ${BUILDS_DIR}/beta/"
     ensure_builds_tree
-
-    # Сборка если запрошена или бинарника нет
-    if $DO_BUILD || [[ ! -f "$BUILD_LINUX/$APP_NAME" ]]; then
-        build_linux
-    fi
+    ensure_binary
 
     local dest="${BUILDS_DIR}/beta"
+    $DO_CLEAN && safe_clean "$dest"
+    mkdir -p "$dest"
 
-    # Опциональная очистка
-    $DO_CLEAN && { safe_clean "$dest"; }
-
-    # Копирование ELF
-    cp "$BUILD_LINUX/$APP_NAME" "$dest/$APP_NAME"
+    cp "$BUILD_DIR/$APP_NAME" "$dest/$APP_NAME"
     chmod +x "$dest/$APP_NAME"
-
-    # Копируем переводы (нужны при запуске из этой же директории)
-    if [[ -d "$BUILD_LINUX/translations" ]]; then
-        mkdir -p "$dest/translations"
-        cp "$BUILD_LINUX/translations/"*.qm "$dest/translations/" 2>/dev/null || true
-        ok "  + translations/"
-    fi
-
-    write_build_info "$dest" "linux-beta"
+    write_build_info "$dest"
 
     rule
     ok "Beta готов!"
-    echo "  Путь:    ${BOLD}$dest/$APP_NAME${NC}"
+    echo -e "  Путь:    ${BOLD}$dest/$APP_NAME${NC}"
     echo "  Размер:  $(file_size "$dest/$APP_NAME")"
     echo "  Версия:  $VERSION  |  commit: $(git_hash)"
     echo ""
-    echo -e "  ${YELLOW}Запуск (требует Qt6 в системе):${NC}"
+    echo "  Запуск:"
     echo "    ./$dest/$APP_NAME"
     echo ""
 }
 
-# ── РЕЖИМ: Release Linux (AppImage) ──────────────────────────────────────────
-# Назначение: финальный дистрибутив для Linux.
-# Артефакт:   самодостаточный AppImage (Qt + плагины + переводы внутри).
-# Путь:       builds/releases/VERSION-linux/Naleystogramm-x86_64.AppImage
-deploy_release_linux() {
-    header "Release Linux → ${BUILDS_DIR}/releases/${VERSION}-linux/"
+# ── РЕЖИМ: Release .tar.gz (универсальный) ──────────────────────────────────
+deploy_release_tar() {
+    header "Release .tar.gz → ${BUILDS_DIR}/releases/${VERSION}-linux/"
     ensure_builds_tree
-
-    # Сборка если запрошена или бинарника нет
-    if $DO_BUILD || [[ ! -f "$BUILD_LINUX/$APP_NAME" ]]; then
-        build_linux
-    fi
+    ensure_binary
 
     local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
-    local appimage_name="Naleystogramm-x86_64.AppImage"
+    local pkg_name="pisya-${VERSION}-${ARCH}.tar.gz"
+    local staging="${BUILD_DIR}/tar-staging/pisya-${VERSION}-${ARCH}"
 
-    # Опциональная очистка
-    $DO_CLEAN && { safe_clean "$dest"; }
+    $DO_CLEAN && safe_clean "$dest"
     mkdir -p "$dest"
 
-    # Запускаем make_appimage.sh из BUILD_LINUX чтобы linuxdeploy создал
-    # AppImage именно там (он помещает .AppImage в рабочую директорию)
-    log "Запуск make_appimage.sh..."
-    (
-        cd "$BUILD_LINUX"
-        bash "$SCRIPT_DIR/scripts/make_appimage.sh" "$SCRIPT_DIR/$BUILD_LINUX"
-    )
+    local dest_abs
+    dest_abs="$(realpath -m "$dest")"
 
-    # Находим созданный AppImage (make_appimage.sh кладёт его в BUILD_LINUX/)
-    local created_appimage
-    created_appimage=$(ls "$BUILD_LINUX"/Naleystogramm-*.AppImage 2>/dev/null | sort -V | tail -1 || true)
+    rm -rf "$(dirname "$staging")"
+    mkdir -p "$staging"
+    cp "$BUILD_DIR/$APP_NAME" "$staging/"
+    chmod +x "$staging/$APP_NAME"
+    cp README.md LICENSE "$staging/"
+    ok "  + $APP_NAME, README.md, LICENSE"
 
-    if [[ -z "$created_appimage" || ! -f "$created_appimage" ]]; then
-        fail "AppImage не найден в $BUILD_LINUX/ после сборки! Проверь вывод make_appimage.sh."
-    fi
+    (cd "$(dirname "$staging")" && tar czf "$dest_abs/$pkg_name" "$(basename "$staging")")
+    rm -rf "$(dirname "$staging")"
 
-    # Переносим в релизную директорию с правильным именем (версия из CMakeLists.txt)
-    cp "$created_appimage" "$dest/$appimage_name"
-    chmod +x "$dest/$appimage_name"
-
-    write_build_info "$dest" "linux"
+    write_build_info "$dest"
 
     rule
-    ok "Release Linux готов!"
-    echo "  Директория:  ${BOLD}$dest/${NC}"
-    echo "  AppImage:    $appimage_name"
-    echo "  Размер:      $(file_size "$dest/$appimage_name")"
+    ok "Release .tar.gz готов!"
+    echo -e "  Директория:  ${BOLD}$dest/${NC}"
+    echo "  Архив:       $pkg_name  ($(file_size "$dest/$pkg_name"))"
     echo "  Версия:      $VERSION  |  commit: $(git_hash)"
     echo ""
-    echo "  Запуск (переносимый, Qt не нужен в системе):"
-    echo "    chmod +x $dest/$appimage_name"
-    echo "    ./$dest/$appimage_name"
+    echo "  Установка:"
+    echo "    tar xzf $pkg_name && sudo install -m 755 pisya-${VERSION}-${ARCH}/pisya /usr/local/bin/pisya"
     echo ""
 }
 
-# ── РЕЖИМ: Release Windows (.exe + DLL) ──────────────────────────────────────
-# Назначение: финальный дистрибутив для Windows.
-# Артефакт:   папка ready-to-run: .exe + Qt DLL + плагины + переводы.
-# Путь:       builds/releases/VERSION-windows/
-#
-# Статически встроены в .exe (DLL НЕ нужны):
-#   libssl.a / libcrypto.a  — OPENSSL_USE_STATIC_LIBS=TRUE
-#   libgcc, libstdc++       — -static-libgcc / -static-libstdc++
-# Копируется в пакет (нужна Qt6Core.dll):
-#   libwinpthread-1.dll     — Qt6Core.dll динамически импортирует её
-deploy_release_windows() {
-    header "Release Windows → ${BUILDS_DIR}/releases/${VERSION}-windows/"
-    ensure_builds_tree
-
-    build_windows
-
-    local dest="${BUILDS_DIR}/releases/${VERSION}-windows"
-
-    # Опциональная очистка
-    $DO_CLEAN && { safe_clean "$dest"; }
-
-    # Создаём структуру директорий пакета
-    mkdir -p "$dest"/{platforms,sqldrivers,styles,tls,networkinformation,translations}
-
-    local ok_count=0
-    local warn_count=0
-
-    # Обёртка copy_file с подсчётом
-    copy_tracked() {
-        if copy_file "$@"; then
-            (( ok_count++ )) || true
-        else
-            (( warn_count++ )) || true
-        fi
-    }
-
-    log "Копирование .exe..."
-    copy_tracked "$BUILD_WIN/$APP_NAME.exe" "$dest/$APP_NAME.exe" "$APP_NAME.exe"
-
-    log "Копирование Qt6 основных DLL..."
-    for dll in Qt6Core Qt6Widgets Qt6Network Qt6Gui Qt6Multimedia; do
-        copy_tracked "${WIN_QT_DLLS}/${dll}.dll" "$dest/${dll}.dll" "${dll}.dll"
-    done
-
-    # Мультимедиа бэкенды (опционально: нужны для воспроизведения голосовых)
-    mkdir -p "$dest/multimedia"
-    for mm_dll in "${WIN_QT_PLUGINS}/multimedia/"*.dll; do
-        [[ -f "$mm_dll" ]] && copy_tracked "$mm_dll" \
-            "$dest/multimedia/$(basename "$mm_dll")" \
-            "multimedia/$(basename "$mm_dll")"
-    done
-
-    # Платформенный плагин — КРИТИЧНО: QApplication упадёт без него!
-    log "Копирование Qt6 платформенного плагина..."
-    copy_tracked \
-        "${WIN_QT_PLUGINS}/platforms/qwindows.dll" \
-        "$dest/platforms/qwindows.dll" \
-        "platforms/qwindows.dll  ← без него крэш!"
-
-    log "Копирование Qt6 плагинов..."
-    # Qt6.8+: qmodernwindowsstyle.dll; старые версии: qwindowsvistastyle.dll
-    for style_dll in qmodernwindowsstyle qwindowsvistastyle; do
-        if [[ -f "${WIN_QT_PLUGINS}/styles/${style_dll}.dll" ]]; then
-            copy_tracked \
-                "${WIN_QT_PLUGINS}/styles/${style_dll}.dll" \
-                "$dest/styles/${style_dll}.dll" \
-                "styles/${style_dll}.dll"
-            break
-        fi
-    done
-
-    # TLS плагин (для Qt Network / TLS соединений)
-    for tls_dll in "${WIN_QT_PLUGINS}/tls/"*.dll; do
-        [[ -f "$tls_dll" ]] && copy_tracked "$tls_dll" "$dest/tls/$(basename "$tls_dll")" \
-            "tls/$(basename "$tls_dll")"
-    done
-
-    # Network information плагин
-    for ni_dll in "${WIN_QT_PLUGINS}/networkinformation/"*.dll; do
-        [[ -f "$ni_dll" ]] && copy_tracked "$ni_dll" \
-            "$dest/networkinformation/$(basename "$ni_dll")" \
-            "networkinformation/$(basename "$ni_dll")"
-    done
-
-    # Переводы приложения
-    log "Копирование переводов..."
-    if [[ -d "$BUILD_WIN/translations" ]]; then
-        cp "$BUILD_WIN/translations/"*.qm "$dest/translations/" 2>/dev/null || true
-        ok "  + translations/*.qm"
-    fi
-
-    # MinGW runtime + транзитивные зависимости Qt — полный список, выявлен
-    # рекурсивным анализом objdump по всем DLL в пакете.
-    # Системные DLL (kernel32, user32, api-ms-win-*, d3d*, dwrite и т.д.)
-    # не включаются — они присутствуют на любой Windows 10+.
-    log "Копирование MinGW runtime и зависимостей Qt..."
-    for rt_dll in \
-        libgcc_s_seh-1.dll \
-        libstdc++-6.dll \
-        libssp-0.dll \
-        libwinpthread-1.dll \
-        zlib1.dll \
-        libpng16-16.dll \
-        libfreetype-6.dll \
-        libbrotlidec.dll \
-        libbrotlicommon.dll \
-        libbz2-1.dll \
-        libharfbuzz-0.dll \
-        libglib-2.0-0.dll \
-        libgraphite2.dll \
-        libintl-8.dll \
-        libiconv-2.dll \
-        libpcre2-8-0.dll \
-        libpcre2-16-0.dll \
-        libsqlite3-0.dll \
-        libzstd.dll; do
-        copy_tracked \
-            "${WIN_MINGW_ROOT}/bin/${rt_dll}" \
-            "$dest/${rt_dll}" \
-            "${rt_dll}"
-    done
-
-    # Статусная информация
-    log "  OpenSSL:  статически встроен в .exe (DLL не нужны)"
-    log "  MinGW runtime: libgcc/libstdc++/libssp/libwinpthread — скопированы (требуют Qt DLL)"
-
-    # Метаданные сборки
-    write_build_info "$dest" "windows"
-
-    # README для конечного пользователя (на русском и английском)
-    cat > "$dest/README.txt" << EOF
-Naleystogramm v${VERSION} — Windows Release
-============================================
-
-Требования / Requirements:
-  - Windows 10 / 11 (x86_64)
-  - Права Администратора (UAC встроен в .exe / Admin rights built-in)
-
-Запуск / Launch:
-  Двойной клик → Windows запросит права Администратора → разрешить.
-  Double-click → Windows will ask for Admin rights → allow.
-
-Структура папки:
-  naleystogramm.exe         — основной исполняемый файл
-  platforms/qwindows.dll    — Qt платформа Windows (обязательна!)
-  styles/                   — Qt стили Windows 10/11
-  tls/                      — Qt TLS плагины (зашифрованные соединения)
-  networkinformation/        — Qt сетевая информация
-  translations/             — переводы интерфейса
-
-Встроено статически (отдельные DLL не нужны):
-  OpenSSL ${VERSION} — шифрование (libssl.a / libcrypto.a)
-  MinGW runtime    — libgcc, libstdc++, libpthread
-
-Версия: ${VERSION}
-Сборка: $(date '+%Y-%m-%d')
-Коммит: $(git_hash)
-EOF
-    ok "  + README.txt"
-
-    make_zip "$dest" "${BUILDS_DIR}/releases/naleystogramm-windows.zip"
-
-    rule
-    ok "Release Windows готов!"
-    echo "  Директория:  ${BOLD}$dest/${NC}"
-    echo "  ZIP:         naleystogramm-windows.zip  ($(file_size "${BUILDS_DIR}/releases/naleystogramm-windows.zip"))"
-    echo "  .exe:        $APP_NAME.exe  ($(file_size "$dest/$APP_NAME.exe"))"
-    echo "  Скопировано: $ok_count  |  Пропущено: $warn_count"
-    echo ""
-    echo "  Содержимое пакета:"
-    find "$dest" -type f | sort | while IFS= read -r f; do
-        printf "    %-52s %s\n" "${f#"$dest"/}" "$(file_size "$f")"
-    done
-    echo ""
-    echo -e "  ${YELLOW}При двойном клике на .exe — Windows запросит права Администратора${NC}"
-    echo "  (UAC requireAdministrator встроен через windres в PE-ресурс)"
-    echo ""
-}
-
-# ── РЕЖИМ: Release Linux (.pkg.tar.zst — Arch Linux) ─────────────────────────
-# Назначение: нативный пакет для Arch Linux / pacman.
-# Артефакт:   naleystogramm-x86_64.pkg.tar.zst
-# Путь:       builds/releases/VERSION-linux/
-# Установка:  sudo pacman -U naleystogramm-x86_64.pkg.tar.zst
+# ── РЕЖИМ: Release .pkg.tar.zst (Arch Linux) ─────────────────────────────────
 deploy_release_pkg() {
     header "Release .pkg.tar.zst → ${BUILDS_DIR}/releases/${VERSION}-linux/"
     ensure_builds_tree
@@ -499,69 +232,53 @@ deploy_release_pkg() {
         fail "zstd не найден. Установите: sudo pacman -S zstd"
     fi
 
-    if $DO_BUILD || [[ ! -f "$BUILD_LINUX/$APP_NAME" ]]; then
-        build_linux
-    fi
+    ensure_binary
 
     local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
     local pkgver="${VERSION}-1"
-    local pkg_name="naleystogramm-x86_64.pkg.tar.zst"
-    local staging="${BUILD_LINUX}/pkg-staging"
+    local pkg_name="${APP_NAME}-${ARCH}.pkg.tar.zst"
+    local staging="${BUILD_DIR}/pkg-staging"
 
-    $DO_CLEAN && { safe_clean "$dest"; }
+    $DO_CLEAN && safe_clean "$dest"
     mkdir -p "$dest"
 
     rm -rf "$staging"
     mkdir -p "$staging/usr/bin"
-    mkdir -p "$staging/usr/share/applications"
-    mkdir -p "$staging/usr/share/icons/hicolor/256x256/apps"
-    mkdir -p "$staging/usr/share/translations/naleystogramm"
+    mkdir -p "$staging/usr/share/licenses/${APP_NAME}"
+    mkdir -p "$staging/usr/share/doc/${APP_NAME}"
 
-    cp "$BUILD_LINUX/$APP_NAME" "$staging/usr/bin/"
+    cp "$BUILD_DIR/$APP_NAME" "$staging/usr/bin/"
     chmod 755 "$staging/usr/bin/$APP_NAME"
     ok "  + usr/bin/$APP_NAME"
 
-    if [[ -d "$BUILD_LINUX/translations" ]]; then
-        cp "$BUILD_LINUX/translations/"*.qm "$staging/usr/share/translations/naleystogramm/" 2>/dev/null || true
-        ok "  + usr/share/translations/naleystogramm/"
-    fi
-
-    if [[ -f "naleystogramm.desktop" ]]; then
-        cp "naleystogramm.desktop" "$staging/usr/share/applications/"
-        ok "  + usr/share/applications/naleystogramm.desktop"
-    fi
-
-    if [[ -f "resources/icons/app_icon.png" ]]; then
-        cp "resources/icons/app_icon.png" "$staging/usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
-        ok "  + usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
-    fi
+    cp LICENSE "$staging/usr/share/licenses/${APP_NAME}/"
+    cp README.md "$staging/usr/share/doc/${APP_NAME}/"
+    ok "  + usr/share/licenses/${APP_NAME}/, usr/share/doc/${APP_NAME}/"
 
     local installed_size
     installed_size=$(du -sb "$staging" | cut -f1)
 
     cat > "$staging/.PKGINFO" << PKGINFO_EOF
-pkgname = naleystogramm
+pkgname = ${APP_NAME}
 pkgver = ${pkgver}
-pkgdesc = P2P мессенджер с E2E-шифрованием без центрального сервера
-url = https://github.com/xomel45/naleystogramm
+pkgdesc = ${PKG_DESC}
+url = ${PKG_URL}
 builddate = $(date +%s)
-packager = xomel45 <xom.xom.zip@gmail.com>
+packager = ${MAINTAINER}
 size = ${installed_size}
-arch = x86_64
-depend = qt6-base
+arch = ${ARCH}
+license = ${PKG_LICENSE}
 depend = openssl
-optdepend = qt6-multimedia: голосовые сообщения
-optdepend = opus: голосовые звонки
-optdepend = qrencode: QR-код для привязки устройств
+depend = gcc-libs
 PKGINFO_EOF
-    ok "  + .PKGINFO  (depends: qt6-base, openssl)"
+    ok "  + .PKGINFO  (depends: openssl, gcc-libs)"
 
     tar --zstd -cf "$dest/$pkg_name" -C "$staging" .PKGINFO usr
     rm -rf "$staging"
 
     rule
     ok "Release .pkg.tar.zst готов!"
-    echo "  Директория:  ${BOLD}$dest/${NC}"
+    echo -e "  Директория:  ${BOLD}$dest/${NC}"
     echo "  Пакет:       $pkg_name"
     echo "  Размер:      $(file_size "$dest/$pkg_name")"
     echo "  Версия:      $VERSION  |  commit: $(git_hash)"
@@ -571,75 +288,55 @@ PKGINFO_EOF
     echo ""
 }
 
-# ── РЕЖИМ: Release Linux (.deb) ───────────────────────────────────────────────
-# Назначение: пакет для Debian / Ubuntu / Mint (системная установка).
-# Артефакт:   naleystogramm_amd64.deb
-# Путь:       builds/releases/VERSION-linux/
-# Требует:    dpkg-deb  (пакет dpkg-dev)
+# ── РЕЖИМ: Release .deb (Debian/Ubuntu/Mint) ─────────────────────────────────
 deploy_release_deb() {
     header "Release .deb → ${BUILDS_DIR}/releases/${VERSION}-linux/"
     ensure_builds_tree
 
     if ! command -v dpkg-deb &>/dev/null; then
-        fail "dpkg-deb не найден. Установите: sudo pacman -S dpkg  /  sudo apt install dpkg-dev"
+        fail "dpkg-deb не найден. Установите: sudo apt install dpkg-dev  /  sudo pacman -S dpkg"
     fi
 
-    if $DO_BUILD || [[ ! -f "$BUILD_LINUX/$APP_NAME" ]]; then
-        build_linux
-    fi
+    ensure_binary
 
     local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
-    local deb_name="naleystogramm_amd64.deb"
-    local pkg_dir="${BUILD_LINUX}/deb-staging"
+    local deb_name="${APP_NAME}_${VERSION}_$(deb_arch).deb"
+    local pkg_dir="${BUILD_DIR}/deb-staging"
 
-    $DO_CLEAN && { safe_clean "$dest"; }
+    $DO_CLEAN && safe_clean "$dest"
     mkdir -p "$dest"
 
     rm -rf "$pkg_dir"
     mkdir -p "$pkg_dir/DEBIAN"
     mkdir -p "$pkg_dir/usr/bin"
-    mkdir -p "$pkg_dir/usr/share/applications"
-    mkdir -p "$pkg_dir/usr/share/icons/hicolor/256x256/apps"
-    mkdir -p "$pkg_dir/usr/share/translations/naleystogramm"
+    mkdir -p "$pkg_dir/usr/share/doc/${APP_NAME}"
 
     local installed_kb
-    installed_kb=$(du -sk "$BUILD_LINUX/$APP_NAME" | cut -f1)
+    installed_kb=$(du -sk "$BUILD_DIR/$APP_NAME" | cut -f1)
 
     cat > "$pkg_dir/DEBIAN/control" << CTRL_EOF
-Package: naleystogramm
+Package: ${APP_NAME}
 Version: ${VERSION}
-Section: net
+Section: devel
 Priority: optional
-Architecture: amd64
+Architecture: $(deb_arch)
 Installed-Size: ${installed_kb}
-Depends: libqt6core6 | libqt6core6t64, libqt6gui6 | libqt6gui6t64, libqt6widgets6 | libqt6widgets6t64, libqt6network6 | libqt6network6t64, libssl3 | libssl1.1
-Recommends: libqt6multimedia6 | libqt6multimedia6t64, libopus0, libqrencode4
-Maintainer: xomel45 <xom.xom.zip@gmail.com>
-Homepage: https://github.com/xomel45/naleystogramm
-Description: P2P мессенджер с E2E-шифрованием без центрального сервера
- Naleystogramm — децентрализованный мессенджер на основе P2P TCP.
- Использует X3DH и Double Ratchet для end-to-end шифрования каждого сообщения.
- Работает без центрального сервера, поддерживает UPnP и relay-режим для NAT.
+Depends: libssl3 | libssl1.1, libstdc++6, libc6
+Maintainer: ${MAINTAINER}
+Homepage: ${PKG_URL}
+Description: ${PKG_DESC}
+ Pisya Code connects to any OpenAI-compatible model (Ollama, LM Studio, etc.)
+ and edits your files directly from the terminal — like Claude Code, but
+ fully offline-capable.
 CTRL_EOF
 
-    cp "$BUILD_LINUX/$APP_NAME" "$pkg_dir/usr/bin/"
+    cp "$BUILD_DIR/$APP_NAME" "$pkg_dir/usr/bin/"
     chmod 755 "$pkg_dir/usr/bin/$APP_NAME"
     ok "  + usr/bin/$APP_NAME"
 
-    if [[ -d "$BUILD_LINUX/translations" ]]; then
-        cp "$BUILD_LINUX/translations/"*.qm "$pkg_dir/usr/share/translations/naleystogramm/" 2>/dev/null || true
-        ok "  + usr/share/translations/naleystogramm/"
-    fi
-
-    if [[ -f "naleystogramm.desktop" ]]; then
-        cp "naleystogramm.desktop" "$pkg_dir/usr/share/applications/"
-        ok "  + usr/share/applications/naleystogramm.desktop"
-    fi
-
-    if [[ -f "resources/icons/app_icon.png" ]]; then
-        cp "resources/icons/app_icon.png" "$pkg_dir/usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
-        ok "  + usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
-    fi
+    cp LICENSE "$pkg_dir/usr/share/doc/${APP_NAME}/copyright"
+    cp README.md "$pkg_dir/usr/share/doc/${APP_NAME}/"
+    ok "  + usr/share/doc/${APP_NAME}/"
 
     find "$pkg_dir/usr/share" -type f -exec chmod 644 {} \;
     find "$pkg_dir" -type d -exec chmod 755 {} \;
@@ -649,7 +346,7 @@ CTRL_EOF
 
     rule
     ok "Release .deb готов!"
-    echo "  Директория:  ${BOLD}$dest/${NC}"
+    echo -e "  Директория:  ${BOLD}$dest/${NC}"
     echo "  Пакет:       $deb_name"
     echo "  Размер:      $(file_size "$dest/$deb_name")"
     echo "  Версия:      $VERSION  |  commit: $(git_hash)"
@@ -660,84 +357,62 @@ CTRL_EOF
     echo ""
 }
 
-# ── РЕЖИМ: Release Linux (.rpm) ───────────────────────────────────────────────
-# Назначение: пакет для Fedora / RHEL / openSUSE / Arch (системная установка).
-# Артефакт:   naleystogramm-x86_64.rpm
-# Путь:       builds/releases/VERSION-linux/
-# Требует:    rpmbuild  (пакет rpm-build / rpm-tools)
+# ── РЕЖИМ: Release .rpm (Fedora/RHEL/openSUSE) ───────────────────────────────
 deploy_release_rpm() {
     header "Release .rpm → ${BUILDS_DIR}/releases/${VERSION}-linux/"
     ensure_builds_tree
 
     if ! command -v rpmbuild &>/dev/null; then
-        fail "rpmbuild не найден. Установите: sudo pacman -S rpm-tools  /  sudo dnf install rpm-build  /  sudo apt install rpm"
+        fail "rpmbuild не найден. Установите: sudo dnf install rpm-build  /  sudo pacman -S rpm-tools"
     fi
 
-    if $DO_BUILD || [[ ! -f "$BUILD_LINUX/$APP_NAME" ]]; then
-        build_linux
-    fi
+    ensure_binary
 
     local dest="${BUILDS_DIR}/releases/${VERSION}-linux"
-    # RPM не допускает дефисы в Version — заменяем на подчёркивания
     local rpm_version="${VERSION//-/_}"
-    local rpm_name="naleystogramm-x86_64.rpm"
-    local rpm_topdir="${BUILD_LINUX}/rpm-staging"
-    local buildroot="${rpm_topdir}/BUILDROOT/naleystogramm-${rpm_version}-1.x86_64"
+    local rpm_name="${APP_NAME}-${ARCH}.rpm"
+    local rpm_topdir="${BUILD_DIR}/rpm-staging"
+    local buildroot="${rpm_topdir}/BUILDROOT/${APP_NAME}-${rpm_version}-1.${ARCH}"
 
-    $DO_CLEAN && { safe_clean "$dest"; }
+    $DO_CLEAN && safe_clean "$dest"
     mkdir -p "$dest"
 
     rm -rf "$rpm_topdir"
     mkdir -p "${rpm_topdir}"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
     mkdir -p "$buildroot/usr/bin"
-    mkdir -p "$buildroot/usr/share/applications"
-    mkdir -p "$buildroot/usr/share/icons/hicolor/256x256/apps"
-    mkdir -p "$buildroot/usr/share/translations/naleystogramm"
+    mkdir -p "$buildroot/usr/share/doc/${APP_NAME}"
+    mkdir -p "$buildroot/usr/share/licenses/${APP_NAME}"
 
-    cp "$BUILD_LINUX/$APP_NAME" "$buildroot/usr/bin/"
+    cp "$BUILD_DIR/$APP_NAME" "$buildroot/usr/bin/"
     chmod 755 "$buildroot/usr/bin/$APP_NAME"
     ok "  + usr/bin/$APP_NAME"
 
-    if [[ -d "$BUILD_LINUX/translations" ]]; then
-        cp "$BUILD_LINUX/translations/"*.qm "$buildroot/usr/share/translations/naleystogramm/" 2>/dev/null || true
-        ok "  + usr/share/translations/naleystogramm/"
-    fi
+    cp README.md "$buildroot/usr/share/doc/${APP_NAME}/"
+    cp LICENSE "$buildroot/usr/share/licenses/${APP_NAME}/"
+    ok "  + usr/share/doc/${APP_NAME}/, usr/share/licenses/${APP_NAME}/"
 
-    if [[ -f "naleystogramm.desktop" ]]; then
-        cp "naleystogramm.desktop" "$buildroot/usr/share/applications/"
-        ok "  + usr/share/applications/naleystogramm.desktop"
-    fi
-
-    if [[ -f "resources/icons/app_icon.png" ]]; then
-        cp "resources/icons/app_icon.png" "$buildroot/usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
-        ok "  + usr/share/icons/hicolor/256x256/apps/naleystogramm.png"
-    fi
-
-    # Список файлов для %files — сканируем buildroot после заполнения
     local files_list
-    files_list=$(find "$buildroot" \( -type f -o -type l \) \
-        | sed "s|${buildroot}||" | sort)
+    files_list=$(find "$buildroot" \( -type f -o -type l \) | sed "s|${buildroot}||" | sort)
 
     local changelog_date
     changelog_date=$(LC_ALL=C date '+%a %b %d %Y')
 
-    cat > "${rpm_topdir}/SPECS/naleystogramm.spec" << SPEC_EOF
-Name:           naleystogramm
+    cat > "${rpm_topdir}/SPECS/${APP_NAME}.spec" << SPEC_EOF
+Name:           ${APP_NAME}
 Version:        ${rpm_version}
 Release:        1
-Summary:        P2P мессенджер с E2E-шифрованием без центрального сервера
-License:        Proprietary
-URL:            https://github.com/xomel45/naleystogramm
-BuildArch:      x86_64
-Requires:       qt6-qtbase >= 6.0, openssl-libs
-Suggests:       qt6-qtmultimedia, opus-libs, qrencode-libs
+Summary:        ${PKG_DESC}
+License:        ${PKG_LICENSE}
+URL:            ${PKG_URL}
+BuildArch:      ${ARCH}
+Requires:       openssl-libs, libstdc++
 %define __spec_install_pre %{nil}
 %define _unpackaged_files_terminate_build 0
 
 %description
-Naleystogramm — децентрализованный мессенджер на основе P2P TCP.
-Использует X3DH и Double Ratchet для end-to-end шифрования каждого сообщения.
-Работает без центрального сервера, поддерживает UPnP и relay-режим для NAT.
+Pisya Code connects to any OpenAI-compatible model (Ollama, LM Studio, etc.)
+and edits your files directly from the terminal — like Claude Code, but
+fully offline-capable.
 
 %build
 # pre-built binary
@@ -749,7 +424,7 @@ Naleystogramm — децентрализованный мессенджер на
 $(echo "$files_list")
 
 %changelog
-* ${changelog_date} xomel45 <xom.xom.zip@gmail.com> - ${rpm_version}-1
+* ${changelog_date} ${MAINTAINER} - ${rpm_version}-1
 - Release ${VERSION}
 SPEC_EOF
 
@@ -757,7 +432,7 @@ SPEC_EOF
         --nodeps \
         --define "_topdir $(realpath "$rpm_topdir")" \
         --buildroot "$(realpath "$buildroot")" \
-        "${rpm_topdir}/SPECS/naleystogramm.spec"
+        "${rpm_topdir}/SPECS/${APP_NAME}.spec"
 
     local created_rpm
     created_rpm=$(find "${rpm_topdir}/RPMS" -name "*.rpm" | head -1 || true)
@@ -771,7 +446,7 @@ SPEC_EOF
 
     rule
     ok "Release .rpm готов!"
-    echo "  Директория:  ${BOLD}$dest/${NC}"
+    echo -e "  Директория:  ${BOLD}$dest/${NC}"
     echo "  Пакет:       $rpm_name"
     echo "  Размер:      $(file_size "$dest/$rpm_name")"
     echo "  Версия:      $VERSION  |  commit: $(git_hash)"
@@ -782,126 +457,51 @@ SPEC_EOF
     echo ""
 }
 
-# ── РЕЖИМ: Release Windows Installer (setup.exe) ──────────────────────────────
-# Назначение: собственный GUI-установщик (чистый C + Win32 API).
-# Пайплайн:
-#   1. Собрать основной .exe + DLL (deploy_release_windows — если нет)
-#   2. Упаковать папку релиза в payload.zip
-#   3. Скопировать payload.zip в installer/
-#   4. Собрать installer через CMake (MinGW cross)
-#   5. Скопировать setup.exe в builds/releases/VERSION-windows-installer/
-deploy_release_windows_installer() {
-    header "Release Windows Installer → ${BUILDS_DIR}/releases/${VERSION}-windows-installer/"
-    ensure_builds_tree
-
-    local win_dir="${BUILDS_DIR}/releases/${VERSION}-windows"
-    local inst_dir="${BUILDS_DIR}/releases/${VERSION}-windows-installer"
-    local payload_zip="installer/payload.zip"
-
-    # ── Шаг 1: убедиться что Windows-релиз собран ─────────────────────────────
-    if [[ ! -d "$win_dir" ]] || [[ ! -f "$win_dir/$APP_NAME.exe" ]]; then
-        log "Windows-релиз не найден, собираем..."
-        deploy_release_windows
-    else
-        ok "Windows-релиз уже есть: $win_dir/"
-    fi
-
-    # ── Шаг 2: создать payload.zip из папки релиза (без обёрточной папки) ─────
-    log "Упаковка payload.zip..."
-    make_zip_flat "$win_dir" "$payload_zip"
-    ok "payload.zip → $(file_size "$payload_zip")"
-
-    # ── Шаг 3: собрать инсталлер (MinGW cross) ────────────────────────────────
-    log "Сборка инсталлера (C + Win32 API)..."
-    cmake -B "$BUILD_WIN" \
-        -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-mingw64.cmake \
-        -DCMAKE_BUILD_TYPE=Release
-    cmake --build "$BUILD_WIN" --target naleystogramm-setup --parallel "$(( $(nproc) - 2 ))"
-
-    local setup_exe="${BUILD_WIN}/naleystogramm-setup.exe"
-    if [[ ! -f "$setup_exe" ]]; then
-        fail "naleystogramm-setup.exe не найден после сборки!"
-    fi
-
-    # ── Шаг 4: копируем в releases/ ───────────────────────────────────────────
-    $DO_CLEAN && { safe_clean "$inst_dir"; }
-    mkdir -p "$inst_dir"
-    cp "$setup_exe" "$inst_dir/naleystogramm-setup.exe"
-    cp "installer/install.ps1" "$inst_dir/install.ps1"
-
-    write_build_info "$inst_dir" "windows-installer"
-
-    rule
-    ok "Windows Installer готов!"
-    echo "  Директория:  ${BOLD}$inst_dir/${NC}"
-    echo "  Файлы:       naleystogramm-setup.exe  ($(file_size "$inst_dir/naleystogramm-setup.exe"))"
-    echo "               install.ps1  (PowerShell-альтернатива)"
-    echo "  Версия:      $VERSION  |  commit: $(git_hash)"
-    echo ""
-    echo -e "  ${YELLOW}Запустить на Windows:${NC} naleystogramm-setup.exe"
-    echo "  (потребует права Администратора — UAC встроен)"
-    echo ""
-}
-
 # ── Вывод помощи ─────────────────────────────────────────────────────────────
 show_help() {
     echo ""
-    echo -e "${BOLD}${CYAN}deploy.sh${NC} — упаковщик артефактов Naleystogramm v${BOLD}${VERSION}${NC}"
+    echo -e "${BOLD}${CYAN}deploy.sh${NC} — упаковщик артефактов Pisya Code v${BOLD}${VERSION}${NC}"
     rule
     echo ""
     echo -e "  ${BOLD}Использование:${NC}"
-    echo "    ./deploy.sh beta                  Сырой ELF → builds/beta/"
-    echo "    ./deploy.sh release               AppImage + Windows → builds/releases/VERSION-*/"
-    echo "    ./deploy.sh release linux         AppImage → builds/releases/${VERSION}-linux/"
-    echo "    ./deploy.sh release pkg/arch      .pkg.tar.zst (Arch/pacman) → builds/releases/${VERSION}-linux/"
-    echo "    ./deploy.sh release deb/debian    .deb → builds/releases/${VERSION}-linux/"
-    echo "    ./deploy.sh release rpm/rh        .rpm → builds/releases/${VERSION}-linux/"
-    echo "    ./deploy.sh release my            Авто: собирает пакет для текущего дистрибутива"
-    echo "    ./deploy.sh release linux-all     Все Linux форматы → builds/releases/${VERSION}-linux/"
-    echo "    ./deploy.sh release win           Собрать + .exe+DLL+zip → builds/releases/${VERSION}-windows/"
-    echo "    ./deploy.sh release win-installer Собрать GUI setup.exe → builds/releases/${VERSION}-windows-installer/"
-    echo "    ./deploy.sh release all           Всё: AppImage+pkg+deb+rpm + Windows+zip"
+    echo "    ./deploy.sh beta                 Сырой бинарь → builds/beta/pisya"
+    echo "    ./deploy.sh release               .tar.gz (универсальный) → builds/releases/${VERSION}-linux/"
+    echo "    ./deploy.sh release tar           То же явно"
+    echo "    ./deploy.sh release pkg/arch      .pkg.tar.zst (Arch/pacman)"
+    echo "    ./deploy.sh release deb/debian    .deb (Debian/Ubuntu/Mint)"
+    echo "    ./deploy.sh release rpm/rh        .rpm (Fedora/RHEL/openSUSE)"
+    echo "    ./deploy.sh release my            Авто: пакет под текущий дистрибутив"
+    echo "    ./deploy.sh release all           Всё: tar.gz + pkg + deb + rpm (что доступно)"
     echo ""
     echo -e "  ${BOLD}Опции:${NC}"
-    echo "    --clean     Удалить целевые директории перед сборкой"
+    echo "    --build     Пересобрать перед деплоем (CMake Release)"
+    echo "    --clean     Удалить целевую директорию перед копированием"
     echo ""
     echo -e "  ${BOLD}Примеры:${NC}"
-    echo "    ./deploy.sh beta --build                   # собрать + beta"
-    echo "    ./deploy.sh release linux --clean          # AppImage поверх чистой папки"
-    echo "    ./deploy.sh release linux-all --build      # все Linux пакеты"
-    echo "    ./deploy.sh release all --build --clean    # полный цикл всех форматов"
+    echo "    ./deploy.sh beta --build"
+    echo "    ./deploy.sh release --build              # .tar.gz"
+    echo "    ./deploy.sh release my --build           # под свой дистрибутив"
+    echo "    ./deploy.sh release all --build --clean  # всё разом"
     echo ""
-    echo -e "  ${BOLD}Требования для Linux-пакетов:${NC}"
-    echo "    AppImage        — linuxdeploy (скачивается автоматически)"
-    echo "    .pkg.tar.zst   — zstd  (sudo pacman -S zstd)"
-    echo "    .deb            — dpkg-deb  (sudo pacman -S dpkg  /  sudo apt install dpkg-dev)"
-    echo "    .rpm       — rpmbuild  (sudo pacman -S rpm-tools  /  sudo dnf install rpm-build)"
+    echo -e "  ${BOLD}Требования для пакетов:${NC}"
+    echo "    .pkg.tar.zst   — zstd     (sudo pacman -S zstd)"
+    echo "    .deb           — dpkg-deb (sudo apt install dpkg-dev / sudo pacman -S dpkg)"
+    echo "    .rpm           — rpmbuild (sudo dnf install rpm-build / sudo pacman -S rpm-tools)"
     echo ""
     echo -e "  ${BOLD}Структура вывода:${NC}"
     echo "    builds/"
     echo "    ├── beta/"
-    echo "    │   ├── naleystogramm          (Linux ELF, требует Qt6 в системе)"
-    echo "    │   ├── translations/"
+    echo "    │   ├── pisya"
     echo "    │   └── build-info.txt"
     echo "    └── releases/"
-    echo "        ├── ${VERSION}-linux/"
-    echo "        │   ├── Naleystogramm-x86_64.AppImage"
-    echo "        │   ├── naleystogramm-x86_64.pkg.tar.zst"
-    echo "        │   ├── naleystogramm_amd64.deb"
-    echo "        │   ├── naleystogramm-x86_64.rpm"
-    echo "        │   └── build-info.txt"
-    echo "        └── ${VERSION}-windows/"
-    echo "            ├── naleystogramm.exe"
-    echo "            ├── platforms/qwindows.dll"
-    echo "            ├── styles/..."
-    echo "            ├── translations/"
-    echo "            ├── README.txt"
+    echo "        └── ${VERSION}-linux/"
+    echo "            ├── pisya-${VERSION}-${ARCH}.tar.gz"
+    echo "            ├── pisya-${ARCH}.pkg.tar.zst"
+    echo "            ├── pisya_${VERSION}_$(deb_arch).deb"
+    echo "            ├── pisya-${ARCH}.rpm"
     echo "            └── build-info.txt"
     echo ""
-    echo -e "  ${CYAN}CMake targets (альтернатива):${NC}"
-    echo "    cmake --build build-linux --target beta"
-    echo "    cmake --build build-linux --target release-linux"
-    echo "    cmake --build build-win   --target release-windows"
+    echo -e "  ${YELLOW}Для локальной установки на эту же машину используй ./install.sh${NC}"
     echo ""
 }
 
@@ -912,14 +512,8 @@ case "$MODE" in
         ;;
     release)
         case "$PLATFORM" in
-            linux)
-                deploy_release_linux
-                ;;
-            win|windows)
-                deploy_release_windows
-                ;;
-            win-installer|windows-installer|installer)
-                deploy_release_windows_installer
+            tar|--build|--clean|"")
+                deploy_release_tar
                 ;;
             pkg|arch|Arch)
                 deploy_release_pkg
@@ -927,52 +521,31 @@ case "$MODE" in
             deb|debian|Debian)
                 deploy_release_deb
                 ;;
-            rpm|rh|RH|red-hat|Red-Hat|red_hat|Red_Hat)
+            rpm|rh|RH|red-hat|Red-Hat)
                 deploy_release_rpm
                 ;;
             my)
-                local fmt
                 fmt=$(detect_pkg_format)
                 case "$fmt" in
                     pkg) log "Определён дистрибутив: Arch-семейство → .pkg.tar.zst"; deploy_release_pkg ;;
                     deb) log "Определён дистрибутив: Debian-семейство → .deb";        deploy_release_deb ;;
                     rpm) log "Определён дистрибутив: RPM-семейство → .rpm";           deploy_release_rpm ;;
-                    *)   fail "Не удалось определить семейство дистрибутива. Укажи формат вручную: pkg / deb / rpm" ;;
+                    *)   warn "Не удалось определить дистрибутив — собираю универсальный .tar.gz"; deploy_release_tar ;;
                 esac
-                ;;
-            linux-all)
-                # Чистим общую linux-папку один раз, чтобы каждый формат
-                # не стирал артефакты предыдущего.
-                if $DO_CLEAN; then
-                    ensure_builds_tree
-                    safe_clean "${BUILDS_DIR}/releases/${VERSION}-linux"
-                    DO_CLEAN=false
-                fi
-                deploy_release_linux
-                deploy_release_pkg
-                deploy_release_deb
-                deploy_release_rpm
                 ;;
             all)
                 if $DO_CLEAN; then
                     ensure_builds_tree
                     safe_clean "${BUILDS_DIR}/releases/${VERSION}-linux"
-                    safe_clean "${BUILDS_DIR}/releases/${VERSION}-windows"
-                    safe_clean "${BUILDS_DIR}/releases/${VERSION}-windows-installer"
-                    rm -f "${BUILDS_DIR}/releases/naleystogramm-windows.zip"
                     DO_CLEAN=false
                 fi
-                deploy_release_linux
-                deploy_release_pkg
-                deploy_release_deb
-                deploy_release_rpm
-                deploy_release_windows
-                deploy_release_windows_installer
+                deploy_release_tar
+                command -v zstd      &>/dev/null && deploy_release_pkg || warn "zstd не найден — .pkg.tar.zst пропущен"
+                command -v dpkg-deb  &>/dev/null && deploy_release_deb || warn "dpkg-deb не найден — .deb пропущен"
+                command -v rpmbuild  &>/dev/null && deploy_release_rpm || warn "rpmbuild не найден — .rpm пропущен"
                 ;;
-            both|--build|--clean|*)
-                # Если второй аргумент — опция, значит AppImage + Windows
-                deploy_release_linux
-                deploy_release_windows
+            *)
+                fail "Неизвестный формат: '$PLATFORM'. Доступно: tar, pkg, deb, rpm, my, all"
                 ;;
         esac
         ;;
