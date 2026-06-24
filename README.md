@@ -21,6 +21,7 @@ A local AI coding assistant written in C++23. Connects to any OpenAI-compatible 
 - **Diff display** — shows `git`-style diffs for every file edit
 - **Spinner + timing** — shows thinking time and token usage per response
 - **Multilingual UI** — English, Русский, Deutsch (`/language` to switch)
+- **Provider presets** — no GPU, no local server? `/provider` switches to DeepSeek, Qwen (DashScope), or OpenRouter (free, no card needed) — OpenAI-compatible
 - **Feedback timer** — asks how the model is doing after 6 hours, then every 48 hours
 - **Permissions** — global `~/.pisya/permissions.json` lets you extend allowed/denied commands across all projects
 - **`.pisyaignore`** — `.gitignore`-style patterns to hide files/directories from the model entirely
@@ -102,6 +103,20 @@ Edit it to point to your AI server. `system_prompt` can also be overridden here.
 
 A permissions file is also auto-created at `~/.pisya/permissions.json` — see [Security](#security).
 
+### No server, no money: hosted providers
+
+Don't have the hardware to run a local model, and don't want to pay for an API? Run `/provider` inside Pisya Code and pick a preset:
+
+- **DeepSeek** — official API, extremely cheap (fractions of a cent per million tokens), OpenAI-compatible. Get a key at [platform.deepseek.com](https://platform.deepseek.com/api_keys).
+- **Qwen (DashScope)** — Alibaba Cloud's official API for Qwen models, new accounts get a free token quota. Get a key at [dashscope.console.aliyun.com](https://dashscope.console.aliyun.com/apiKey).
+- **OpenRouter (free, no card)** — sign up with just an email/Google account, no payment method ever required. Free models (tag `:free`) are unlimited in time, rate-limited (20 req/min, 50/day). Get a key at [openrouter.ai/keys](https://openrouter.ai/keys).
+- **Custom API** — any other OpenAI-compatible endpoint (Groq, etc.) — same flow as `pisya -api`.
+- **Local** — back to Ollama/LM Studio on `host:port`.
+
+The wizard only asks for an API key (and lets you override the model); base URLs are pre-filled. This uses each provider's official API — not their web chat — so it won't get your account flagged or banned.
+
+Both DeepSeek and DashScope require a billing-capable payment method, which some payment processors don't currently support for every country/region. If sign-up gets blocked on a payment step, **OpenRouter needs no payment at all** for its free models — pick that instead.
+
 ## Usage
 
 ```bash
@@ -116,6 +131,7 @@ pisya --resume 2026-03-26_14-32-00         # resume specific session by ID
 |---------|-------------|
 | `/clear` | Clear conversation history |
 | `/config` | Show current config |
+| `/provider` | Switch AI provider (local / DeepSeek / Qwen / OpenRouter / custom) |
 | `/session` | Show current session ID |
 | `/language` | Switch UI language (En / Ru / De) |
 | `/exit` | Quit |

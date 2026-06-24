@@ -190,6 +190,91 @@ static std::string pick_session() {
     return choice;
 }
 
+// ── provider setup ────────────────────────────────────────────────────────────
+
+static void run_custom_api_setup(Config& cfg) {
+    const auto& L = lang::S();
+    std::string line;
+
+    std::cout << "\n" << clr::dim << "  " << L.api_url_prompt << clr::reset << " ";
+    std::getline(std::cin, line);
+    if (!line.empty()) cfg.api_url = line;
+
+    std::cout << clr::dim << "  " << L.api_key_prompt << clr::reset << " ";
+    std::getline(std::cin, line);
+    if (!line.empty()) cfg.api_key = line;
+
+    std::cout << clr::dim << "  " << L.api_model_prompt << clr::reset << " ";
+    std::getline(std::cin, line);
+    if (!line.empty()) cfg.model = line;
+
+    cfg.save();
+    std::cout << clr::dim << "  " << L.api_saved << clr::reset << "\n\n";
+}
+
+// DeepSeek / DashScope-style preset: API key + optional model override, URL fixed.
+static void run_preset_api_setup(Config& cfg, const std::string& api_url,
+                                  const std::string& default_model) {
+    const auto& L = lang::S();
+    std::string line;
+
+    cfg.api_url = api_url;
+
+    std::cout << "\n" << clr::dim << "  " << L.api_key_prompt << clr::reset << " ";
+    std::getline(std::cin, line);
+    if (!line.empty()) cfg.api_key = line;
+
+    std::cout << clr::dim << "  " << L.api_model_prompt
+               << clr::reset << clr::dim << "  [" << default_model << "]" << clr::reset << " ";
+    std::getline(std::cin, line);
+    cfg.model = line.empty() ? default_model : line;
+
+    cfg.save();
+    std::cout << clr::dim << "  " << L.api_saved << clr::reset << "\n\n";
+}
+
+static void run_local_setup(Config& cfg) {
+    const auto& L = lang::S();
+    std::string line;
+
+    cfg.api_url.clear();
+    cfg.api_key.clear();
+
+    std::cout << "\n" << clr::dim << "  " << L.host_prompt << clr::reset << " ";
+    std::getline(std::cin, line);
+    if (!line.empty()) cfg.host = line;
+
+    std::cout << clr::dim << "  " << L.port_prompt << clr::reset << " ";
+    std::getline(std::cin, line);
+    if (!line.empty()) { try { cfg.port = std::stoi(line); } catch (...) {} }
+
+    std::cout << clr::dim << "  " << L.api_model_prompt << clr::reset << " ";
+    std::getline(std::cin, line);
+    if (!line.empty()) cfg.model = line;
+
+    cfg.save();
+    std::cout << clr::dim << "  " << L.api_saved << clr::reset << "\n\n";
+}
+
+// /provider — pick between local Ollama/LM Studio, a free/cheap hosted preset
+// (DeepSeek, Qwen via DashScope), or a fully custom OpenAI-compatible API.
+static void run_provider_wizard(Config& cfg) {
+    const auto& L = lang::S();
+    std::string choice = ui::select(L.provider_prompt,
+        {L.provider_local, "DeepSeek", "Qwen (DashScope)", "OpenRouter (free, no card)", L.provider_custom});
+
+    if (choice.empty()) return; // cancelled
+
+    if      (choice == L.provider_local)             run_local_setup(cfg);
+    else if (choice == "DeepSeek")                   run_preset_api_setup(cfg, "https://api.deepseek.com", "deepseek-v4-flash");
+    else if (choice == "Qwen (DashScope)")           run_preset_api_setup(cfg, "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "qwen3-coder-plus");
+    else if (choice == "OpenRouter (free, no card)") run_preset_api_setup(cfg, "https://openrouter.ai/api/v1", "openai/gpt-oss-120b:free");
+    else                                              run_custom_api_setup(cfg);
+
+    cfg.print();
+    std::cout << "\n";
+}
+
 int main(int argc, char* argv[]) {
     if (getuid() == 0) {
         std::cerr << "\n"
@@ -221,23 +306,7 @@ int main(int argc, char* argv[]) {
 
     // ── -api: configure an external OpenAI-compatible API ────────────────────
     if (api_setup) {
-        const auto& L = lang::S();
-        std::string line;
-
-        std::cout << "\n" << clr::dim << "  " << L.api_url_prompt << clr::reset << " ";
-        std::getline(std::cin, line);
-        if (!line.empty()) cfg.api_url = line;
-
-        std::cout << clr::dim << "  " << L.api_key_prompt << clr::reset << " ";
-        std::getline(std::cin, line);
-        if (!line.empty()) cfg.api_key = line;
-
-        std::cout << clr::dim << "  " << L.api_model_prompt << clr::reset << " ";
-        std::getline(std::cin, line);
-        if (!line.empty()) cfg.model = line;
-
-        cfg.save();
-        std::cout << clr::dim << "  " << L.api_saved << clr::reset << "\n\n";
+        run_custom_api_setup(cfg);
     }
 
     // Fetch model info from server (best-effort — silent on failure)
@@ -307,6 +376,11 @@ int main(int argc, char* argv[]) {
         }
         if (input == "/config") {
             cfg.print();
+            continue;
+        }
+        if (input == "/provider") {
+            run_provider_wizard(cfg);
+            agent = Agent(cfg, agent.get_history());
             continue;
         }
         if (input == "/session") {

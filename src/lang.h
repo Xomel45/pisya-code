@@ -68,6 +68,13 @@ struct Strings {
     const char* api_key_prompt;
     const char* api_model_prompt;
     const char* api_saved;
+
+    // /provider — provider picker
+    const char* provider_prompt;
+    const char* provider_local;
+    const char* provider_custom;
+    const char* host_prompt;
+    const char* port_prompt;
 };
 
 void           set(Code c);

@@ -19,11 +19,12 @@ static constexpr Strings EN = {
     .session_load_fail  = "Could not load session: ",
     .starting_fresh     = " \u2014 starting fresh.",
     .bye                = "Bye",
-    .cmd_hint           = "/clear \u2014 clear history | /config \u2014 show config | /language \u2014 change language | /help \u2014 help | /rc \u2014 remote control | /exit \u2014 quit",
+    .cmd_hint           = "/clear \u2014 clear history | /config \u2014 show config | /provider \u2014 switch AI provider | /language \u2014 change language | /help \u2014 help | /rc \u2014 remote control | /exit \u2014 quit",
     .session_label      = "Session: ",
     .help_text          = "Available commands:\n"
                            "  /clear     \u2014 clear conversation history\n"
                            "  /config    \u2014 show current configuration\n"
+                           "  /provider  \u2014 switch AI provider (local / DeepSeek / Qwen / custom)\n"
                            "  /session   \u2014 show current session ID\n"
                            "  /language  \u2014 change language\n"
                            "  /rc        \u2014 remote control from a phone (LAN), /rc stop to stop\n"
@@ -57,6 +58,11 @@ static constexpr Strings EN = {
     .api_key_prompt          = "API key (leave empty if none):",
     .api_model_prompt        = "Model name (leave empty to keep current):",
     .api_saved               = "API config saved.",
+    .provider_prompt         = "Choose AI provider",
+    .provider_local          = "Local (Ollama / LM Studio)",
+    .provider_custom         = "Custom API...",
+    .host_prompt             = "Host (leave empty to keep current):",
+    .port_prompt             = "Port (leave empty to keep current):",
 };
 
 static constexpr Strings RU = {
@@ -76,11 +82,12 @@ static constexpr Strings RU = {
     .session_load_fail  = "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0441\u0435\u0441\u0441\u0438\u044e: ",
     .starting_fresh     = " \u2014 \u043d\u0430\u0447\u0438\u043d\u0430\u0435\u043c \u0437\u0430\u043d\u043e\u0432\u043e.",
     .bye                = "\u041f\u043e\u043a\u0430",
-    .cmd_hint           = "/clear \u2014 \u043e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e | /config \u2014 \u043a\u043e\u043d\u0444\u0438\u0433 | /language \u2014 \u044f\u0437\u044b\u043a | /help \u2014 \u0441\u043f\u0440\u0430\u0432\u043a\u0430 | /rc \u2014 \u0443\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 | /exit \u2014 \u0432\u044b\u0445\u043e\u0434",
+    .cmd_hint           = "/clear \u2014 \u043e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e | /config \u2014 \u043a\u043e\u043d\u0444\u0438\u0433 | /provider \u2014 \u0441\u043c\u0435\u043d\u0438\u0442\u044c AI-\u043f\u0440\u043e\u0432\u0430\u0439\u0434\u0435\u0440\u0430 | /language \u2014 \u044f\u0437\u044b\u043a | /help \u2014 \u0441\u043f\u0440\u0430\u0432\u043a\u0430 | /rc \u2014 \u0443\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 | /exit \u2014 \u0432\u044b\u0445\u043e\u0434",
     .session_label      = "\u0421\u0435\u0441\u0441\u0438\u044f: ",
     .help_text          = "\u0414\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0435 \u043a\u043e\u043c\u0430\u043d\u0434\u044b:\n"
                            "  /clear     \u2014 \u043e\u0447\u0438\u0441\u0442\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e \u0434\u0438\u0430\u043b\u043e\u0433\u0430\n"
                            "  /config    \u2014 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0442\u0435\u043a\u0443\u0449\u0443\u044e \u043a\u043e\u043d\u0444\u0438\u0433\u0443\u0440\u0430\u0446\u0438\u044e\n"
+                           "  /provider  \u2014 \u0441\u043c\u0435\u043d\u0438\u0442\u044c AI-\u043f\u0440\u043e\u0432\u0430\u0439\u0434\u0435\u0440\u0430 (\u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e / DeepSeek / Qwen / \u0441\u0432\u043e\u0439)\n"
                            "  /session   \u2014 \u043f\u043e\u043a\u0430\u0437\u0430\u0442\u044c ID \u0442\u0435\u043a\u0443\u0449\u0435\u0439 \u0441\u0435\u0441\u0441\u0438\u0438\n"
                            "  /language  \u2014 \u0441\u043c\u0435\u043d\u0438\u0442\u044c \u044f\u0437\u044b\u043a\n"
                            "  /rc        \u2014 \u0443\u0434\u0430\u043b\u0451\u043d\u043d\u043e\u0435 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u0441 \u0442\u0435\u043b\u0435\u0444\u043e\u043d\u0430 (\u043f\u043e \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u043e\u0439 \u0441\u0435\u0442\u0438), /rc stop \u2014 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c\n"
@@ -114,6 +121,11 @@ static constexpr Strings RU = {
     .api_key_prompt          = "API-\u043a\u043b\u044e\u0447 (\u043e\u0441\u0442\u0430\u0432\u044c \u043f\u0443\u0441\u0442\u044b\u043c, \u0435\u0441\u043b\u0438 \u043d\u0435\u0442):",
     .api_model_prompt        = "\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043c\u043e\u0434\u0435\u043b\u0438 (\u043e\u0441\u0442\u0430\u0432\u044c \u043f\u0443\u0441\u0442\u044b\u043c, \u0447\u0442\u043e\u0431\u044b \u043d\u0435 \u043c\u0435\u043d\u044f\u0442\u044c):",
     .api_saved               = "\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 API \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u044b.",
+    .provider_prompt         = "\u0412\u044b\u0431\u0435\u0440\u0438 AI-\u043f\u0440\u043e\u0432\u0430\u0439\u0434\u0435\u0440\u0430",
+    .provider_local          = "\u041b\u043e\u043a\u0430\u043b\u044c\u043d\u043e (Ollama / LM Studio)",
+    .provider_custom         = "\u0421\u0432\u043e\u0439 API...",
+    .host_prompt             = "\u0425\u043e\u0441\u0442 (\u043e\u0441\u0442\u0430\u0432\u044c \u043f\u0443\u0441\u0442\u044b\u043c, \u0447\u0442\u043e\u0431\u044b \u043d\u0435 \u043c\u0435\u043d\u044f\u0442\u044c):",
+    .port_prompt             = "\u041f\u043e\u0440\u0442 (\u043e\u0441\u0442\u0430\u0432\u044c \u043f\u0443\u0441\u0442\u044b\u043c, \u0447\u0442\u043e\u0431\u044b \u043d\u0435 \u043c\u0435\u043d\u044f\u0442\u044c):",
 };
 
 static constexpr Strings DE = {
@@ -133,11 +145,12 @@ static constexpr Strings DE = {
     .session_load_fail  = "Sitzung konnte nicht geladen werden: ",
     .starting_fresh     = " \u2014 starte neu.",
     .bye                = "Tsch\u00fcss",
-    .cmd_hint           = "/clear \u2014 Verlauf l\u00f6schen | /config \u2014 Konfiguration | /language \u2014 Sprache | /help \u2014 Hilfe | /rc \u2014 Fernsteuerung | /exit \u2014 beenden",
+    .cmd_hint           = "/clear \u2014 Verlauf l\u00f6schen | /config \u2014 Konfiguration | /provider \u2014 KI-Anbieter wechseln | /language \u2014 Sprache | /help \u2014 Hilfe | /rc \u2014 Fernsteuerung | /exit \u2014 beenden",
     .session_label      = "Sitzung: ",
     .help_text          = "Verf\u00fcgbare Befehle:\n"
                            "  /clear     \u2014 Verlauf l\u00f6schen\n"
                            "  /config    \u2014 aktuelle Konfiguration anzeigen\n"
+                           "  /provider  \u2014 KI-Anbieter wechseln (lokal / DeepSeek / Qwen / eigene)\n"
                            "  /session   \u2014 aktuelle Sitzungs-ID anzeigen\n"
                            "  /language  \u2014 Sprache \u00e4ndern\n"
                            "  /rc        \u2014 Fernsteuerung vom Smartphone (LAN), /rc stop zum Beenden\n"
@@ -171,6 +184,11 @@ static constexpr Strings DE = {
     .api_key_prompt          = "API-Schlüssel (leer lassen, falls keiner):",
     .api_model_prompt        = "Modellname (leer lassen, um aktuellen zu behalten):",
     .api_saved               = "API-Konfiguration gespeichert.",
+    .provider_prompt         = "KI-Anbieter wählen",
+    .provider_local          = "Lokal (Ollama / LM Studio)",
+    .provider_custom         = "Eigene API...",
+    .host_prompt             = "Host (leer lassen, um aktuellen zu behalten):",
+    .port_prompt             = "Port (leer lassen, um aktuellen zu behalten):",
 };
 
 static Code g_code = Code::En;
